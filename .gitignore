@@ -1,0 +1,21 @@
+# .NET build output
+**/bin/
+**/obj/
+TestResults/
+**/TestResults/
+
+# IDE and local tooling
+.vs/
+.idea/
+*.user
+*.suo
+
+# Coverage and diagnostics
+coverage/
+*.coverage
+*.trx
+
+# Local environment files
+.env
+.env.*
+!.env.example
