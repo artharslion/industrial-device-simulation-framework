@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\IndustrialSim.Protocols.Modbus\IndustrialSim.Protocols.Modbus.csproj" />
     <ProjectReference Include="..\..\src\IndustrialSim.Configuration\IndustrialSim.Configuration.csproj" />
     <ProjectReference Include="..\..\src\IndustrialSim.Core\IndustrialSim.Core.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Cli\IndustrialSim.Cli.csproj" />
   </ItemGroup>
 
 </Project>

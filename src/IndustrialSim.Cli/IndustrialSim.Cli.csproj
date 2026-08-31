@@ -7,4 +7,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\IndustrialSim.Configuration\IndustrialSim.Configuration.csproj" />
+    <ProjectReference Include="..\IndustrialSim.Scenarios\IndustrialSim.Scenarios.csproj" />
+  </ItemGroup>
 </Project>
