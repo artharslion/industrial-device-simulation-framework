@@ -42,7 +42,10 @@ public sealed class ModbusConfiguration
 public sealed class ModbusMappingConfiguration
 {
     public int? Register { get; set; }
+    public int? InputRegister { get; set; }
+    public int? HoldingRegister { get; set; }
     public int? Coil { get; set; }
+    public int? DiscreteInput { get; set; }
     public string? Type { get; set; }
     public string? Access { get; set; }
     public string? ByteOrder { get; set; }
