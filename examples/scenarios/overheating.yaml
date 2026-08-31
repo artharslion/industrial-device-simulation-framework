@@ -1,0 +1,7 @@
+scenario:
+  name: pump-overheating
+  steps:
+    - after: 30s
+      fault:
+        type: overheat
+        device: pump-001

@@ -1,0 +1,14 @@
+scenario:
+  name: pump-startup
+  steps:
+    - at: 0s
+      command:
+        device: pump-001
+        name: start
+    - after: 1s
+      ramp:
+        device: pump-001
+        datapoint: speed
+        from: 0
+        to: 1450
+        duration: 10s

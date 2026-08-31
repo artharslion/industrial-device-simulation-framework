@@ -1,0 +1,54 @@
+device:
+  id: pump-001
+  type: pump
+  name: Pump 001
+  datapoints:
+    temperature:
+      type: double
+      unit: "°C"
+      initial: 25
+      access: read
+    pressure:
+      type: double
+      unit: "bar"
+      initial: 0
+      access: read
+    speed:
+      type: int32
+      unit: "rpm"
+      initial: 0
+      access: readwrite
+    running:
+      type: boolean
+      initial: false
+      access: read
+    alarm:
+      type: boolean
+      initial: false
+      access: read
+  commands:
+    start:
+    stop:
+protocols:
+  opcua:
+    enabled: true
+    endpoint: "opc.tcp://0.0.0.0:4840"
+  modbus:
+    enabled: true
+    port: 5020
+    mappings:
+      temperature:
+        register: 100
+        type: float32
+      pressure:
+        register: 102
+        type: float32
+      speed:
+        register: 104
+        type: uint16
+      running:
+        coil: 10
+        type: boolean
+web:
+  enabled: true
+  port: 8080

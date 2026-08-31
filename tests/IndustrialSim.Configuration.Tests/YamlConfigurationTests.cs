@@ -65,4 +65,14 @@ protocols:
 
         Assert.Throws<ArgumentException>(() => ModbusMappingValidator.Validate(configuration));
     }
+
+    [Fact]
+    public void Canonical_pump_example_is_loadable()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "examples", "devices", "pump.yaml");
+        var loaded = new YamlConfigurationLoader().Load(File.ReadAllText(path));
+
+        Assert.Equal("pump-001", loaded.Device.Id.Value);
+        Assert.Equal(4, loaded.ModbusMappings.Count);
+    }
 }
