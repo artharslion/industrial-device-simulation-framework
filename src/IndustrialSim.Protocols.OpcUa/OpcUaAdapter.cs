@@ -17,6 +17,7 @@ public sealed class OpcUaAdapter : IProtocolAdapter
     public TimeSpan Latency { get; private set; }
     public string Endpoint { get; private set; } = "opc.tcp://0.0.0.0:4840";
     public int Port { get; private set; }
+    public bool IsStandardOpcUaServer => false;
     public event Action<DataPointChanged>? DataPointChanged;
     public IReadOnlyCollection<string> Nodes => _runtime is null ? Array.Empty<string>() : _runtime.Definition.DataPoints.Select(p => $"{_runtime.Definition.Id.Value}/{p.Name}").Concat(_runtime.Definition.Commands.Select(c => $"{_runtime.Definition.Id.Value}/{c.Name}")).ToArray();
     public void ApplyTransportFault(string fault, TimeSpan duration) { IsDisconnected = fault.Equals("disconnect", StringComparison.OrdinalIgnoreCase) || fault.Equals("timeout", StringComparison.OrdinalIgnoreCase); Latency = fault.Equals("latency", StringComparison.OrdinalIgnoreCase) ? duration : TimeSpan.Zero; }

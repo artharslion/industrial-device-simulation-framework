@@ -32,4 +32,10 @@ public class ProtocolContractTests
         var adapter = new OpcUaAdapter(); await adapter.StartAsync(runtime, new ProtocolOptions()); adapter.ApplyTransportFault("disconnect", TimeSpan.Zero);
         Assert.Throws<IOException>(() => adapter.Read("speed")); Assert.True(adapter.IsRunning); adapter.RecoverTransportFault(); Assert.Equal(1, adapter.Read("speed"));
     }
+
+    [Fact]
+    public void Raw_listener_is_not_claimed_as_standard_opcua_server()
+    {
+        Assert.False(new OpcUaAdapter().IsStandardOpcUaServer);
+    }
 }

@@ -22,8 +22,14 @@ public sealed class ModbusAdapter : IProtocolAdapter
     public int Port { get; private set; }
     public void Configure(IEnumerable<ValidatedModbusMapping> mappings) => _mappings = mappings.ToDictionary(m => m.Name, StringComparer.OrdinalIgnoreCase);
     public object? Read(string datapoint) { EnsureTransport(); Ensure(); return _runtime!.Read(datapoint)?.Value; }
-    public void Write(string datapoint, object? value) { Ensure(); var result = _runtime!.Write(datapoint, value); if (!result.Succeeded) throw new InvalidOperationException(result.Error); }
-    public byte[] ReadRegisters(int address, int count) { if (count < 1) throw new ArgumentException("Count must be positive."); var bytes = new byte[count * 2]; for (var i = 0; i < count; i++) { var mapping = _mappings.Values.FirstOrDefault(m => m.Kind == "register" && m.Address <= address + i && address + i < m.Address + m.Width) ?? throw new ArgumentException("Illegal address."); var raw = Encode(mapping, Read(mapping.Name)); var offset = (address + i - mapping.Address) * 2; bytes[i * 2] = raw[offset]; bytes[i * 2 + 1] = raw[offset + 1]; } return bytes; }
+    public void Write(string datapoint, object? value)
+    {
+        Ensure();
+        if (_mappings.TryGetValue(datapoint, out var mapping) && (mapping.Kind is not "coil" and not "register" || !CanWrite(mapping)))
+            throw new InvalidOperationException($"Mapping '{datapoint}' is not writable.");
+        var result = _runtime!.Write(datapoint, value); if (!result.Succeeded) throw new InvalidOperationException(result.Error);
+    }
+    public byte[] ReadRegisters(int address, int count, string kind = "register") { if (count < 1) throw new ArgumentException("Count must be positive."); var bytes = new byte[count * 2]; for (var i = 0; i < count; i++) { var mapping = _mappings.Values.FirstOrDefault(m => m.Kind == kind && m.Address <= address + i && address + i < m.Address + m.Width) ?? throw new ArgumentException("Illegal address."); var raw = Encode(mapping, Read(mapping.Name)); var offset = (address + i - mapping.Address) * 2; bytes[i * 2] = raw[offset]; bytes[i * 2 + 1] = raw[offset + 1]; } return bytes; }
     private void Ensure() { if (!IsRunning || _runtime is null) throw new InvalidOperationException("Modbus adapter is not running."); }
     private void EnsureTransport() { if (IsDisconnected) throw new IOException("Modbus transport disconnected."); }
     private async Task AcceptLoopAsync(CancellationToken token)
@@ -46,7 +52,7 @@ public sealed class ModbusAdapter : IProtocolAdapter
             try {
                 EnsureTransport();
                 if (function is 1 or 2) { var bits = new byte[(count + 7) / 8]; for (var i = 0; i < count; i++) { var m = _mappings.Values.FirstOrDefault(x => x.Kind == (function == 1 ? "coil" : "discrete") && x.Address == address + i) ?? throw new ArgumentException("Illegal address."); if (Convert.ToBoolean(Read(m.Name))) bits[i / 8] |= (byte)(1 << (i % 8)); } await Reply(stream, header, function, bits, token); }
-                else if (function is 3 or 4) { var payload = ReadRegisters(address, count); await Reply(stream, header, function, new[] { (byte)payload.Length }.Concat(payload).ToArray(), token); }
+                else if (function is 3 or 4) { var payload = ReadRegisters(address, count, function == 3 ? "register" : "input"); await Reply(stream, header, function, new[] { (byte)payload.Length }.Concat(payload).ToArray(), token); }
                 else if (function == 5) { var m = _mappings.Values.FirstOrDefault(x => x.Kind == "coil" && x.Address == address) ?? throw new ArgumentException("Illegal address."); Write(m.Name, body[3] == 0xFF); await Reply(stream, header, function, body[1..5], token); }
                 else if (function == 6) { var value = BinaryPrimitives.ReadUInt16BigEndian(body.AsSpan(3,2)); var m = _mappings.Values.FirstOrDefault(x => x.Kind == "register" && x.Address == address) ?? throw new ArgumentException("Illegal address."); Write(m.Name, ConvertValue(m.DataType, value)); await Reply(stream, header, function, body[1..5], token); }
                 else if (function == 16) { var byteCount = body[5]; for (var i=0;i<count;i++) { var m = _mappings.Values.FirstOrDefault(x => x.Kind == "register" && x.Address == address+i) ?? throw new ArgumentException("Illegal address."); Write(m.Name, ConvertValue(m.DataType, BinaryPrimitives.ReadUInt16BigEndian(body.AsSpan(6+i*2,2)))); } await Reply(stream, header, function, body[1..5], token); }
@@ -57,4 +63,5 @@ public sealed class ModbusAdapter : IProtocolAdapter
     private static async Task Reply(NetworkStream stream, byte[] header, byte function, byte[] payload, CancellationToken token) { var response = new byte[8 + payload.Length]; Array.Copy(header, response, 4); response[4]=0; response[5]=(byte)(2+payload.Length); response[6]=header[6]; response[7]=function; Array.Copy(payload,0,response,8,payload.Length); await stream.WriteAsync(response, token); }
     private static byte[] Encode(ValidatedModbusMapping m, object? value) { var b = new byte[m.Width*2]; switch(m.DataType.ToLowerInvariant()) { case "float32": BinaryPrimitives.WriteSingleBigEndian(b, Convert.ToSingle(value)); break; case "int32": BinaryPrimitives.WriteInt32BigEndian(b, Convert.ToInt32(value)); break; case "uint32": BinaryPrimitives.WriteUInt32BigEndian(b, Convert.ToUInt32(value)); break; case "int16": BinaryPrimitives.WriteInt16BigEndian(b, Convert.ToInt16(value)); break; default: BinaryPrimitives.WriteUInt16BigEndian(b, Convert.ToUInt16(value)); break; } return b; }
     private static object ConvertValue(string type, ushort value) => type.ToLowerInvariant() switch { "int16" => (short)value, "int32" => (int)value, "uint32" => (uint)value, _ => value };
+    private static bool CanWrite(ValidatedModbusMapping mapping) => string.IsNullOrWhiteSpace(mapping.Access) || string.Equals(mapping.Access, "write", StringComparison.OrdinalIgnoreCase) || string.Equals(mapping.Access, "readwrite", StringComparison.OrdinalIgnoreCase);
 }

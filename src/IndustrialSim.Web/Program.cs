@@ -7,9 +7,13 @@ using IndustrialSim.Faults;
 using System.Collections.Concurrent;
 using IndustrialSim.Protocols.OpcUa;
 using IndustrialSim.Protocols.Modbus;
+using IndustrialSim.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
-var definition = new DeviceDefinition(new DeviceId("pump-001"), "pump", new[] { new DataPointDefinition("speed", DataType.Int32, DataPointAccess.ReadWrite, 0), new DataPointDefinition("running", DataType.Boolean, DataPointAccess.Read, false), new DataPointDefinition("alarm", DataType.Boolean, DataPointAccess.Read, false) });
+var configuredPath = Environment.GetEnvironmentVariable("INDUSTRIALSIM_DEVICE_CONFIG");
+var definition = !string.IsNullOrWhiteSpace(configuredPath) && File.Exists(configuredPath)
+    ? new YamlConfigurationLoader().Load(File.ReadAllText(configuredPath)).Device
+    : new DeviceDefinition(new DeviceId("pump-001"), "pump", new[] { new DataPointDefinition("speed", DataType.Int32, DataPointAccess.ReadWrite, 0), new DataPointDefinition("running", DataType.Boolean, DataPointAccess.Read, false), new DataPointDefinition("alarm", DataType.Boolean, DataPointAccess.Read, false) });
 var state = new StateStore(definition); var engine = new SimulationEngine(new DeterministicClock());
 var events = new List<object>(); state.DataPointChanged += e => events.Add(e);
 var faultManager = new FaultManager(engine); faultManager.LifecycleChanged += e => events.Add(e);

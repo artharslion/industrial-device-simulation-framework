@@ -15,6 +15,7 @@
     <ProjectReference Include="..\IndustrialSim.Devices\IndustrialSim.Devices.csproj" />
     <ProjectReference Include="..\IndustrialSim.Scenarios\IndustrialSim.Scenarios.csproj" />
     <ProjectReference Include="..\IndustrialSim.Faults\IndustrialSim.Faults.csproj" />
+    <ProjectReference Include="..\IndustrialSim.Configuration\IndustrialSim.Configuration.csproj" />
     <ProjectReference Include="..\IndustrialSim.Protocols.Abstractions\IndustrialSim.Protocols.Abstractions.csproj" />
     <ProjectReference Include="..\IndustrialSim.Protocols.OpcUa\IndustrialSim.Protocols.OpcUa.csproj" />
     <ProjectReference Include="..\IndustrialSim.Protocols.Modbus\IndustrialSim.Protocols.Modbus.csproj" />
