@@ -18,4 +18,11 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IndustrialSim.Scenarios\IndustrialSim.Scenarios.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Runtime\IndustrialSim.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Core\IndustrialSim.Core.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Devices\IndustrialSim.Devices.csproj" />
+  </ItemGroup>
+
 </Project>
