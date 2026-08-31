@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\IndustrialSim.Protocols.Abstractions\IndustrialSim.Protocols.Abstractions.csproj" />
+    <ProjectReference Include="..\IndustrialSim.Core\IndustrialSim.Core.csproj" />
+  </ItemGroup>
 </Project>

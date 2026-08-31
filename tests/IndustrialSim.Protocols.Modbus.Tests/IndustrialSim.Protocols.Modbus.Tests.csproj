@@ -17,5 +17,12 @@
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IndustrialSim.Protocols.Modbus\IndustrialSim.Protocols.Modbus.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Protocols.Abstractions\IndustrialSim.Protocols.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Configuration\IndustrialSim.Configuration.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Runtime\IndustrialSim.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Core\IndustrialSim.Core.csproj" />
+  </ItemGroup>
 
 </Project>

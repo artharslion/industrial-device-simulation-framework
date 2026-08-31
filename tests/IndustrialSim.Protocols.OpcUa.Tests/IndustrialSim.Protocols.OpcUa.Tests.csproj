@@ -17,5 +17,11 @@
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IndustrialSim.Protocols.OpcUa\IndustrialSim.Protocols.OpcUa.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Protocols.Abstractions\IndustrialSim.Protocols.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Runtime\IndustrialSim.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Core\IndustrialSim.Core.csproj" />
+  </ItemGroup>
 
 </Project>
