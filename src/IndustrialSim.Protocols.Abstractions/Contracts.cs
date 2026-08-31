@@ -33,4 +33,6 @@ public interface IProtocolAdapter
     bool IsRunning { get; }
     Task StartAsync(IDeviceRuntime runtime, ProtocolOptions options, CancellationToken cancellationToken = default);
     Task StopAsync(CancellationToken cancellationToken = default);
+    void ApplyTransportFault(string fault, TimeSpan duration);
+    void RecoverTransportFault();
 }

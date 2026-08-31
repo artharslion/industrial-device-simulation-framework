@@ -13,6 +13,8 @@
     <ProjectReference Include="..\IndustrialSim.Core\IndustrialSim.Core.csproj" />
     <ProjectReference Include="..\IndustrialSim.Runtime\IndustrialSim.Runtime.csproj" />
     <ProjectReference Include="..\IndustrialSim.Devices\IndustrialSim.Devices.csproj" />
+    <ProjectReference Include="..\IndustrialSim.Scenarios\IndustrialSim.Scenarios.csproj" />
+    <ProjectReference Include="..\IndustrialSim.Faults\IndustrialSim.Faults.csproj" />
   </ItemGroup>
 
 </Project>

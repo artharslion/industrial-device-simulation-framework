@@ -15,12 +15,14 @@ public sealed class FaultManager
     private readonly SimulationEngine _engine;
     public FaultManager(SimulationEngine engine) => _engine = engine ?? throw new ArgumentNullException(nameof(engine));
     public event Action<FaultEvent>? LifecycleChanged;
+    private readonly Dictionary<string, FaultSpec> _active = new(StringComparer.OrdinalIgnoreCase);
     public void Schedule(FaultSpec fault)
     {
         if (fault.Start < TimeSpan.Zero || fault.Duration < TimeSpan.Zero) throw new ArgumentException("Fault times cannot be negative.");
         Emit(fault, FaultLifecycle.Scheduled, SimulationTime.Zero);
-        _engine.Schedule(new SimulationTime(fault.Start), () => { Emit(fault, FaultLifecycle.Active, _engine.CurrentTime); if (fault.Duration is { } d) _engine.Schedule(new SimulationTime(fault.Start + d), () => Emit(fault, FaultLifecycle.Recovered, _engine.CurrentTime)); });
+        _engine.Schedule(new SimulationTime(fault.Start), () => { _active[fault.Id] = fault; Emit(fault, FaultLifecycle.Active, _engine.CurrentTime); if (fault.Duration is { } d) _engine.Schedule(new SimulationTime(fault.Start + d), () => Recover(fault.Id)); });
     }
+    public bool Recover(string id) { if (!_active.Remove(id, out var fault)) return false; Emit(fault, FaultLifecycle.Recovered, _engine.CurrentTime); return true; }
     private void Emit(FaultSpec fault, FaultLifecycle lifecycle, SimulationTime time) => LifecycleChanged?.Invoke(new FaultEvent(fault, lifecycle, time));
 }
 

@@ -7,11 +7,16 @@ public sealed class OpcUaAdapter : IProtocolAdapter
     private IDeviceRuntime? _runtime;
     public string Name => "opcua";
     public bool IsRunning { get; private set; }
+    public bool IsDisconnected { get; private set; }
+    public TimeSpan Latency { get; private set; }
+    public void ApplyTransportFault(string fault, TimeSpan duration) { IsDisconnected = fault.Equals("disconnect", StringComparison.OrdinalIgnoreCase); Latency = fault.Equals("latency", StringComparison.OrdinalIgnoreCase) ? duration : TimeSpan.Zero; }
+    public void RecoverTransportFault() { IsDisconnected = false; Latency = TimeSpan.Zero; }
     public Task StartAsync(IDeviceRuntime runtime, ProtocolOptions options, CancellationToken cancellationToken = default) { cancellationToken.ThrowIfCancellationRequested(); _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime)); IsRunning = true; return Task.CompletedTask; }
     public Task StopAsync(CancellationToken cancellationToken = default) { cancellationToken.ThrowIfCancellationRequested(); IsRunning = false; _runtime = null; return Task.CompletedTask; }
-    public object? Read(string node) { Ensure(); return _runtime!.Read(NodeName(node))?.Value; }
+    public object? Read(string node) { EnsureTransport(); Ensure(); return _runtime!.Read(NodeName(node))?.Value; }
     public void Write(string node, object? value) { Ensure(); var result = _runtime!.Write(NodeName(node), value); if (!result.Succeeded) throw new InvalidOperationException(result.Error); }
     public Task InvokeMethodAsync(string method, CancellationToken cancellationToken = default) { Ensure(); return _runtime!.InvokeCommandAsync(method[(method.LastIndexOf('/') + 1)..], cancellationToken); }
     private string NodeName(string node) => node[(node.LastIndexOf('/') + 1)..];
     private void Ensure() { if (!IsRunning || _runtime is null) throw new InvalidOperationException("OPC UA adapter is not running."); }
+    private void EnsureTransport() { if (IsDisconnected) throw new IOException("OPC UA transport disconnected."); }
 }

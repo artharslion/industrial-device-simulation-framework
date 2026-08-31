@@ -24,4 +24,12 @@ public class ProtocolContractTests
         var runtime = new InMemoryDeviceRuntime(new DeviceDefinition(new DeviceId("pump-001"), "pump", new[] { new DataPointDefinition("speed", DataType.Int32, DataPointAccess.ReadWrite, 0) }, new[] { new CommandDefinition("start") }));
         var adapter = new OpcUaAdapter(); await adapter.StartAsync(runtime, new ProtocolOptions()); adapter.Write("pump-001/speed", 8); Assert.Equal(8, adapter.Read("pump-001/speed")); await adapter.InvokeMethodAsync("pump-001/start"); Assert.Equal(1, runtime.CommandsInvoked);
     }
+
+    [Fact]
+    public async Task Transport_disconnect_does_not_stop_runtime()
+    {
+        var runtime = new InMemoryDeviceRuntime(new DeviceDefinition(new DeviceId("p"), "pump", new[] { new DataPointDefinition("speed", DataType.Int32, DataPointAccess.Read, 1) }));
+        var adapter = new OpcUaAdapter(); await adapter.StartAsync(runtime, new ProtocolOptions()); adapter.ApplyTransportFault("disconnect", TimeSpan.Zero);
+        Assert.Throws<IOException>(() => adapter.Read("speed")); Assert.True(adapter.IsRunning); adapter.RecoverTransportFault(); Assert.Equal(1, adapter.Read("speed"));
+    }
 }
