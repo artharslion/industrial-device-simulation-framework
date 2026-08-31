@@ -69,7 +69,7 @@ public sealed record ScalarValue
 
     private static T ConvertNumeric<T>(DataType dataType, object value) where T : struct
     {
-        if (value is bool || value is char || value is string && dataType is not (DataType.Float or DataType.Double))
+        if (value is bool || value is char)
             throw Invalid(dataType, value);
 
         return (T)Convert.ChangeType(value, typeof(T), CultureInfo.InvariantCulture);

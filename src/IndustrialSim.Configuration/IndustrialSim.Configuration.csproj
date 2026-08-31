@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\IndustrialSim.Core\IndustrialSim.Core.csproj" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
 </Project>
