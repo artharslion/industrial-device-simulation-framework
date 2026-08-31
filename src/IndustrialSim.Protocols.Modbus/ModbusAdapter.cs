@@ -12,7 +12,7 @@ public sealed class ModbusAdapter : IProtocolAdapter
     public bool IsDisconnected { get; private set; } public TimeSpan Latency { get; private set; }
     public void ApplyTransportFault(string fault, TimeSpan duration) { IsDisconnected = fault.Equals("disconnect", StringComparison.OrdinalIgnoreCase) || fault.Equals("timeout", StringComparison.OrdinalIgnoreCase); Latency = fault.Equals("latency", StringComparison.OrdinalIgnoreCase) ? duration : TimeSpan.Zero; }
     public void RecoverTransportFault() { IsDisconnected = false; Latency = TimeSpan.Zero; }
-    public Task StartAsync(IDeviceRuntime runtime, ProtocolOptions options, CancellationToken cancellationToken = default) { cancellationToken.ThrowIfCancellationRequested(); _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime)); IsRunning = true; return Task.CompletedTask; }
+    public async Task StartAsync(IDeviceRuntime runtime, ProtocolOptions options, CancellationToken cancellationToken = default) { cancellationToken.ThrowIfCancellationRequested(); _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime)); IsRunning = true; if (options.Port > 0) await StartServerAsync(options.Port, cancellationToken); }
     public async Task StopAsync(CancellationToken cancellationToken = default) { cancellationToken.ThrowIfCancellationRequested(); _serverCts?.Cancel(); _listener?.Stop(); IsRunning = false; _runtime = null; if (_serverCts is not null) await Task.CompletedTask; }
     public Task StartServerAsync(int port, CancellationToken cancellationToken = default)
     {
@@ -44,6 +44,7 @@ public sealed class ModbusAdapter : IProtocolAdapter
             var length = (header[4] << 8) | header[5]; var body = new byte[length - 1]; read = 0; while (read < body.Length) { var n = await stream.ReadAsync(body.AsMemory(read, body.Length - read), token); if (n == 0) return; read += n; }
             var function = body[0]; var address = (body[1] << 8) | body[2]; var count = (body[3] << 8) | body[4];
             try {
+                EnsureTransport();
                 if (function is 1 or 2) { var bits = new byte[(count + 7) / 8]; for (var i = 0; i < count; i++) { var m = _mappings.Values.FirstOrDefault(x => x.Kind == (function == 1 ? "coil" : "discrete") && x.Address == address + i) ?? throw new ArgumentException("Illegal address."); if (Convert.ToBoolean(Read(m.Name))) bits[i / 8] |= (byte)(1 << (i % 8)); } await Reply(stream, header, function, bits, token); }
                 else if (function is 3 or 4) { var payload = ReadRegisters(address, count); await Reply(stream, header, function, new[] { (byte)payload.Length }.Concat(payload).ToArray(), token); }
                 else if (function == 5) { var m = _mappings.Values.FirstOrDefault(x => x.Kind == "coil" && x.Address == address) ?? throw new ArgumentException("Illegal address."); Write(m.Name, body[3] == 0xFF); await Reply(stream, header, function, body[1..5], token); }
