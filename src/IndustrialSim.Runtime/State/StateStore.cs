@@ -32,6 +32,12 @@ public sealed class StateStore
     }
 
     public StateTransitionResult Set(DataPointId dataPointId, object? value, SimulationTime? timestamp = null)
+        => SetCore(dataPointId, value, timestamp, enforceAccess: true);
+
+    public StateTransitionResult SetInternal(DataPointId dataPointId, object? value, SimulationTime? timestamp = null)
+        => SetCore(dataPointId, value, timestamp, enforceAccess: false);
+
+    private StateTransitionResult SetCore(DataPointId dataPointId, object? value, SimulationTime? timestamp, bool enforceAccess)
     {
         DataPointChanged? changedEvent = null;
         StateTransitionResult result;
@@ -42,7 +48,7 @@ public sealed class StateStore
                 string.Equals(item.Name, dataPointId.Value, StringComparison.OrdinalIgnoreCase));
             if (point is null)
                 return StateTransitionResult.Rejected($"Data point '{dataPointId.Value}' does not exist.");
-            if (point.Access is DataPointAccess.Read)
+            if (enforceAccess && point.Access is DataPointAccess.Read)
                 return StateTransitionResult.Rejected($"Data point '{point.Name}' is read-only.");
             if (!ScalarValue.TryCreate(point.DataType, value, out var normalized))
                 return StateTransitionResult.Rejected($"Value is invalid for data point '{point.Name}' of type {point.DataType}.");

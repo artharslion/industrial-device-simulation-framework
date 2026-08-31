@@ -6,4 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\IndustrialSim.Core\IndustrialSim.Core.csproj" />
+    <ProjectReference Include="..\IndustrialSim.Runtime\IndustrialSim.Runtime.csproj" />
+  </ItemGroup>
+
 </Project>
