@@ -17,5 +17,10 @@
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IndustrialSim.Faults\IndustrialSim.Faults.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Core\IndustrialSim.Core.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Runtime\IndustrialSim.Runtime.csproj" />
+  </ItemGroup>
 
 </Project>
