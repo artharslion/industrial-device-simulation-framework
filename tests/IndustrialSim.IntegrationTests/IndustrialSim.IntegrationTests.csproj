@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\IndustrialSim.Hosting\IndustrialSim.Hosting.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>

@@ -1,0 +1,148 @@
+using System.Collections.Concurrent;
+using IndustrialSim.Configuration;
+using IndustrialSim.Configuration.Models;
+using IndustrialSim.Core.Domain;
+using IndustrialSim.Faults;
+using IndustrialSim.Protocols.Abstractions;
+using IndustrialSim.Protocols.Modbus;
+using IndustrialSim.Protocols.OpcUa;
+using IndustrialSim.Runtime.Engine;
+using IndustrialSim.Runtime.State;
+using IndustrialSim.Runtime.Time;
+using IndustrialSim.Scenarios;
+
+namespace IndustrialSim.Hosting;
+
+public sealed class SimulationHost : IAsyncDisposable
+{
+    private readonly LoadedConfiguration _configuration;
+    private readonly Dictionary<string, IProtocolAdapter> _protocols = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentQueue<object> _events = new();
+    private bool _disposed;
+
+    private SimulationHost(LoadedConfiguration configuration)
+    {
+        _configuration = configuration;
+        Runtime = new InMemoryDeviceRuntime(configuration.Device);
+        Engine = new SimulationEngine(new DeterministicClock());
+        FaultManager = new FaultManager(Engine);
+        Runtime.State.DataPointChanged += change => _events.Enqueue(change);
+        FaultManager.LifecycleChanged += change => _events.Enqueue(change);
+
+        if (configuration.Configuration.Protocols?.Opcua?.Enabled == true)
+            _protocols.Add("opcua", new OpcUaAdapter());
+        if (configuration.Configuration.Protocols?.Modbus?.Enabled == true)
+        {
+            var modbus = new ModbusAdapter();
+            modbus.Configure(configuration.ModbusMappings);
+            _protocols.Add("modbus", modbus);
+        }
+    }
+
+    public IDeviceRuntime Runtime { get; }
+    public StateStore State => Runtime.State;
+    public SimulationEngine Engine { get; }
+    public FaultManager FaultManager { get; }
+    public ScenarioRunner? ScenarioRunner { get; private set; }
+    public string? ActiveScenarioName { get; private set; }
+    public IReadOnlyDictionary<string, IProtocolAdapter> Protocols => _protocols;
+    public IReadOnlyCollection<object> Events => _events.ToArray();
+    public bool IsRunning { get; private set; }
+
+    public static async Task<SimulationHost> LoadAsync(string path, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Configuration path cannot be blank.", nameof(path));
+        if (!File.Exists(path)) throw new FileNotFoundException($"Device configuration file '{path}' was not found.", path);
+        var yaml = await File.ReadAllTextAsync(path, cancellationToken);
+        return new SimulationHost(new YamlConfigurationLoader().Load(yaml));
+    }
+
+    public static SimulationHost Create(DeviceDefinition definition) => new(new LoadedConfiguration(new RootConfiguration(), definition, []));
+
+    public async Task StartAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (IsRunning) return;
+        var started = new List<IProtocolAdapter>();
+        try
+        {
+            await Engine.StartAsync(cancellationToken);
+            foreach (var (name, protocol) in _protocols)
+            {
+                switch (name)
+                {
+                    case "opcua":
+                        var endpoint = _configuration.Configuration.Protocols?.Opcua?.Endpoint ?? "opc.tcp://0.0.0.0:4840";
+                        var opcPort = Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && uri.Port > 0 ? uri.Port : 4840;
+                        await protocol.StartAsync(Runtime, new ProtocolOptions(endpoint, opcPort), cancellationToken);
+                        break;
+                    case "modbus":
+                        var modbusPort = _configuration.Configuration.Protocols?.Modbus?.Port ?? 5020;
+                        await protocol.StartAsync(Runtime, new ProtocolOptions(Port: modbusPort), cancellationToken);
+                        if (modbusPort == 0) await ((ModbusAdapter)protocol).StartServerAsync(0, cancellationToken);
+                        break;
+                }
+                started.Add(protocol);
+            }
+            IsRunning = true;
+        }
+        catch
+        {
+            foreach (var protocol in started.AsEnumerable().Reverse()) await protocol.StopAsync(CancellationToken.None);
+            await Engine.StopAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    public ScenarioRunner RunScenario(string yaml)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var scenario = new ScenarioParser().Parse(yaml);
+        ActiveScenarioName = scenario.Name;
+        ScenarioRunner = new ScenarioRunner(
+            scenario,
+            Engine,
+            State,
+            (_, command) => Runtime.InvokeCommandAsync(command).GetAwaiter().GetResult(),
+            (device, type) => ScheduleScenarioFault(device, type));
+        ScenarioRunner.Start();
+        return ScenarioRunner;
+    }
+
+    public void Tick(TimeSpan amount) => Engine.Tick(amount);
+
+    public void ApplyNetworkFault(string protocol, string type, TimeSpan duration)
+    {
+        if (!_protocols.TryGetValue(protocol, out var adapter)) throw new ArgumentException($"Protocol '{protocol}' is not configured.", nameof(protocol));
+        adapter.ApplyTransportFault(type, duration);
+    }
+
+    public void RecoverNetworkFault(string protocol)
+    {
+        if (!_protocols.TryGetValue(protocol, out var adapter)) throw new ArgumentException($"Protocol '{protocol}' is not configured.", nameof(protocol));
+        adapter.RecoverTransportFault();
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!IsRunning && Engine.State == EngineState.Stopped) return;
+        foreach (var protocol in _protocols.Values.Reverse())
+            if (protocol.IsRunning) await protocol.StopAsync(cancellationToken);
+        await Engine.StopAsync(cancellationToken);
+        IsRunning = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        await StopAsync(CancellationToken.None);
+        _disposed = true;
+    }
+
+    private void ScheduleScenarioFault(string device, string type)
+    {
+        FaultManager.Schedule(new FaultSpec($"scenario-{Guid.NewGuid():N}", FaultCategory.Device, device, null, Engine.CurrentTime.Elapsed, Type: type));
+    }
+}

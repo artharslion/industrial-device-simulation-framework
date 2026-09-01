@@ -9,7 +9,7 @@ public sealed record LoadedConfiguration(RootConfiguration Configuration, Device
 
 public sealed class YamlConfigurationLoader
 {
-    private readonly IDeserializer _deserializer = new DeserializerBuilder().WithNamingConvention(UnderscoredNamingConvention.Instance).Build();
+    private readonly IDeserializer _deserializer = new DeserializerBuilder().WithNamingConvention(CamelCaseNamingConvention.Instance).Build();
 
     public LoadedConfiguration Load(string yaml)
     {

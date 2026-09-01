@@ -1,18 +1,17 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-
   <ItemGroup>
-    <ProjectReference Include="..\IndustrialSim.Hosting\IndustrialSim.Hosting.csproj" />
     <ProjectReference Include="..\IndustrialSim.Configuration\IndustrialSim.Configuration.csproj" />
-    <ProjectReference Include="..\IndustrialSim.Scenarios\IndustrialSim.Scenarios.csproj" />
+    <ProjectReference Include="..\IndustrialSim.Core\IndustrialSim.Core.csproj" />
+    <ProjectReference Include="..\IndustrialSim.Faults\IndustrialSim.Faults.csproj" />
     <ProjectReference Include="..\IndustrialSim.Protocols.Abstractions\IndustrialSim.Protocols.Abstractions.csproj" />
-    <ProjectReference Include="..\IndustrialSim.Protocols.OpcUa\IndustrialSim.Protocols.OpcUa.csproj" />
     <ProjectReference Include="..\IndustrialSim.Protocols.Modbus\IndustrialSim.Protocols.Modbus.csproj" />
+    <ProjectReference Include="..\IndustrialSim.Protocols.OpcUa\IndustrialSim.Protocols.OpcUa.csproj" />
+    <ProjectReference Include="..\IndustrialSim.Runtime\IndustrialSim.Runtime.csproj" />
+    <ProjectReference Include="..\IndustrialSim.Scenarios\IndustrialSim.Scenarios.csproj" />
   </ItemGroup>
 </Project>
