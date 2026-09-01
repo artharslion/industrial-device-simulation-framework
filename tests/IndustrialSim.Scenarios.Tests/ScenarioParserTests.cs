@@ -49,4 +49,31 @@ public class ScenarioParserTests
         var ex = Assert.Throws<ArgumentException>(() => new ScenarioParser().Parse(yaml));
         Assert.Contains("device", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void Parses_documented_data_and_network_fault_shapes()
+    {
+        const string yaml = """
+            scenario:
+              name: faults
+              steps:
+                - at: 0s
+                  fault:
+                    type: stale
+                    target: { device: pump-001, datapoint: temperature }
+                    duration: 2s
+                - after: 1s
+                  fault:
+                    type: network.timeout
+                    protocol: modbus
+                    duration: 3s
+            """;
+        var scenario = new ScenarioParser().Parse(yaml);
+        var data = Assert.IsType<FaultAction>(scenario.Steps[0].Action);
+        Assert.Equal("temperature", data.DataPoint);
+        Assert.Equal(TimeSpan.FromSeconds(2), data.Duration);
+        var network = Assert.IsType<FaultAction>(scenario.Steps[1].Action);
+        Assert.Equal("modbus", network.Protocol);
+        Assert.Equal(TimeSpan.FromSeconds(3), network.Duration);
+    }
 }

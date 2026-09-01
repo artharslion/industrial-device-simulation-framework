@@ -13,13 +13,14 @@ public sealed class ScenarioRunner
     private readonly StateStore _state;
     private readonly Action<string, string>? _command;
     private readonly Action<string, string>? _fault;
+    private readonly Action<FaultAction>? _faultAction;
     private bool _started;
     private bool _stopped;
     public event Action<ScenarioAction, SimulationTime>? ActionExecuted;
     public bool IsRunning => _started && !_stopped;
 
-    public ScenarioRunner(ScenarioDefinition scenario, SimulationEngine engine, StateStore state, Action<string, string>? command = null, Action<string, string>? fault = null)
-    { _scenario = scenario ?? throw new ArgumentNullException(nameof(scenario)); _engine = engine ?? throw new ArgumentNullException(nameof(engine)); _state = state ?? throw new ArgumentNullException(nameof(state)); _command = command; _fault = fault; }
+    public ScenarioRunner(ScenarioDefinition scenario, SimulationEngine engine, StateStore state, Action<string, string>? command = null, Action<string, string>? fault = null, Action<FaultAction>? faultAction = null)
+    { _scenario = scenario ?? throw new ArgumentNullException(nameof(scenario)); _engine = engine ?? throw new ArgumentNullException(nameof(engine)); _state = state ?? throw new ArgumentNullException(nameof(state)); _command = command; _fault = fault; _faultAction = faultAction; }
 
     public void Start()
     {
@@ -57,7 +58,7 @@ public sealed class ScenarioRunner
         {
             case SetAction set: _state.SetInternal(new DataPointId(set.DataPoint), set.Value, _engine.CurrentTime); break;
             case CommandAction command: _command?.Invoke(command.Device, command.Name); break;
-            case FaultAction fault: _fault?.Invoke(fault.Device, fault.Type); break;
+            case FaultAction fault: _faultAction?.Invoke(fault); _fault?.Invoke(fault.Device, fault.Type); break;
             case RampAction ramp: ExecuteRamp(ramp); break;
             case WaitAction _: break;
         }

@@ -1,5 +1,14 @@
 # Current Implementation Review Notes
 
+## Resolution Status (2026-09-01)
+
+The acceptance-critical gaps described below were resolved during Phase 6R
+and Phase 7. The repository now contains a standard OPC UA server, complete
+Modbus TCP wire tests and encoding, shared YAML host composition, real
+cross-protocol/fault integration coverage, long-running CLI lifecycle, and a
+developer Web console. The historical sections below remain as the baseline
+review that motivated remediation.
+
 ## Review Scope
 
 This document records the implementation currently present in the repository

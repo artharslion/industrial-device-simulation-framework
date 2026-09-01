@@ -15,7 +15,13 @@ public sealed record SetAction(string Device, string DataPoint, object? Value) :
 public sealed record RampAction(string Device, string DataPoint, double From, double To, TimeSpan Duration) : ScenarioAction;
 public sealed record CommandAction(string Device, string Name) : ScenarioAction;
 public sealed record WaitAction(TimeSpan Duration) : ScenarioAction;
-public sealed record FaultAction(string Device, string Type) : ScenarioAction;
+public sealed record FaultAction(
+    string Device,
+    string Type,
+    string? DataPoint = null,
+    string? Protocol = null,
+    TimeSpan? Duration = null,
+    IReadOnlyDictionary<string, string>? Metadata = null) : ScenarioAction;
 
 public sealed class ScenarioParser
 {
@@ -46,11 +52,30 @@ public sealed class ScenarioParser
     private static RampAction ParseRamp(YamlNode n) { var m = Map(n, "ramp"); return new(Required(m, "device"), Required(m, "datapoint"), Number(m, "from"), Number(m, "to"), ParseDuration(Required(m, "duration"))); }
     private static CommandAction ParseCommand(YamlNode n) { var m = Map(n, "command"); return new(Required(m, "device"), Required(m, "name")); }
     private static WaitAction ParseWait(YamlNode n) { var m = Map(n, "wait"); return new(ParseDuration(Required(m, "duration"))); }
-    private static FaultAction ParseFault(YamlNode n) { var m = Map(n, "fault"); return new(Required(m, "device"), Required(m, "type")); }
+    private static FaultAction ParseFault(YamlNode n)
+    {
+        var mapping = Map(n, "fault");
+        var type = Required(mapping, "type");
+        var device = Optional(mapping, "device");
+        var dataPoint = Optional(mapping, "datapoint");
+        if (mapping.Children.TryGetValue(Key("target"), out var targetNode))
+        {
+            var target = Map(targetNode, "target");
+            device = Optional(target, "device") ?? device;
+            dataPoint = Optional(target, "datapoint") ?? dataPoint;
+        }
+        var protocol = Optional(mapping, "protocol");
+        if (string.IsNullOrWhiteSpace(device) && string.IsNullOrWhiteSpace(protocol)) throw new ArgumentException("Fault action requires a device/target or protocol.");
+        TimeSpan? duration = Optional(mapping, "duration") is { } durationText ? ParseDuration(durationText) : null;
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in new[] { "parameter", "seed" }) if (Optional(mapping, key) is { } value) metadata[key] = value;
+        return new FaultAction(device ?? string.Empty, type, dataPoint, protocol, duration, metadata.Count == 0 ? null : metadata);
+    }
     private static YamlMappingNode Map(YamlNode n, string context) => n as YamlMappingNode ?? throw new ArgumentException($"'{context}' must be a mapping.");
     private static YamlMappingNode Map(YamlMappingNode root, string key) => root.Children.TryGetValue(Key(key), out var n) ? Map(n, key) : throw new ArgumentException($"Missing required '{key}'.");
     private static YamlScalarNode Key(string key) => new(key);
     private static string Required(YamlMappingNode m, string key) => m.Children.TryGetValue(Key(key), out var n) && n is YamlScalarNode s && !string.IsNullOrWhiteSpace(s.Value) ? s.Value.Trim() : throw new ArgumentException($"Missing required '{key}'.");
+    private static string? Optional(YamlMappingNode mapping, string key) => mapping.Children.TryGetValue(Key(key), out var node) && node is YamlScalarNode scalar && !string.IsNullOrWhiteSpace(scalar.Value) ? scalar.Value.Trim() : null;
     private static double Number(YamlMappingNode m, string key) => double.TryParse(Required(m, key), NumberStyles.Float, CultureInfo.InvariantCulture, out var n) ? n : throw new ArgumentException($"'{key}' must be numeric.");
     public static TimeSpan ParseDuration(string text) { text = text.Trim(); if (TimeSpan.TryParse(text, CultureInfo.InvariantCulture, out var t)) return t; if (text.Length < 2 || !double.TryParse(text[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var n)) throw new ArgumentException($"Invalid duration '{text}'."); return text[^1] switch { 's' => TimeSpan.FromSeconds(n), 'm' => TimeSpan.FromMinutes(n), 'h' => TimeSpan.FromHours(n), _ => throw new ArgumentException($"Invalid duration '{text}'.") }; }
     private static object? ConvertNode(YamlNode n) => n is YamlScalarNode s ? (s.Value is null ? null : bool.TryParse(s.Value, out var b) ? b : long.TryParse(s.Value, out var l) ? l : double.TryParse(s.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : s.Value) : throw new ArgumentException("Scalar value required.");

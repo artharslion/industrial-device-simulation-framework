@@ -16,15 +16,28 @@ public interface IDeviceRuntime
 public sealed class InMemoryDeviceRuntime : IDeviceRuntime
 {
     private readonly HashSet<string> _commands;
+    private readonly IReadOnlyDictionary<string, Func<CancellationToken, Task>> _commandHandlers;
     public InMemoryDeviceRuntime(DeviceDefinition definition)
-    { Definition = definition ?? throw new ArgumentNullException(nameof(definition)); State = new StateStore(definition); _commands = definition.Commands.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase); }
+        : this(definition, null, null) { }
+    public InMemoryDeviceRuntime(DeviceDefinition definition, StateStore? state, IReadOnlyDictionary<string, Func<CancellationToken, Task>>? commandHandlers)
+    {
+        Definition = definition ?? throw new ArgumentNullException(nameof(definition));
+        State = state ?? new StateStore(definition);
+        _commands = definition.Commands.Select(command => command.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _commandHandlers = commandHandlers ?? new Dictionary<string, Func<CancellationToken, Task>>(StringComparer.OrdinalIgnoreCase);
+    }
     public DeviceDefinition Definition { get; }
     public StateStore State { get; }
     public int CommandsInvoked { get; private set; }
     public ScalarValue? Read(string datapoint) => State.Get(new DataPointId(datapoint));
     public StateTransitionResult Write(string datapoint, object? value) => State.Set(new DataPointId(datapoint), value);
-    public Task InvokeCommandAsync(string command, CancellationToken cancellationToken = default)
-    { cancellationToken.ThrowIfCancellationRequested(); if (!_commands.Contains(command)) throw new ArgumentException($"Command '{command}' does not exist."); CommandsInvoked++; return Task.CompletedTask; }
+    public async Task InvokeCommandAsync(string command, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_commands.Contains(command)) throw new ArgumentException($"Command '{command}' does not exist.");
+        if (_commandHandlers.TryGetValue(command, out var handler)) await handler(cancellationToken);
+        CommandsInvoked++;
+    }
 }
 
 public interface IProtocolAdapter

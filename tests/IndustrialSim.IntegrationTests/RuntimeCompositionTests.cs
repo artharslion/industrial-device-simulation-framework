@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using IndustrialSim.Hosting;
+using IndustrialSim.Protocols.Modbus;
 
 namespace IndustrialSim.IntegrationTests;
 
@@ -54,6 +55,41 @@ public sealed class RuntimeCompositionTests
         Assert.False(host.IsRunning);
     }
 
+    [Fact]
+    public async Task Scenario_network_fault_uses_protocol_target_and_recovers_after_duration()
+    {
+        var file = WriteTempConfig(null, FreePort());
+        await using var host = await SimulationHost.LoadAsync(file, new SimulationHostOptions(Deterministic: true));
+        await host.StartAsync();
+        host.RunScenario("""
+            scenario:
+              name: network
+              steps:
+                - at: 0s
+                  fault:
+                    type: network.timeout
+                    protocol: modbus
+                    duration: 1s
+            """);
+        host.Tick(TimeSpan.Zero);
+        var adapter = Assert.IsType<ModbusAdapter>(host.Protocols["modbus"]);
+        Assert.True(adapter.IsDisconnected);
+        host.Tick(TimeSpan.FromSeconds(1));
+        Assert.False(adapter.IsDisconnected);
+    }
+
+    [Fact]
+    public async Task Yaml_pump_commands_and_time_drive_the_runtime_behavior_model()
+    {
+        var file = WriteTempConfig(null, null);
+        await using var host = await SimulationHost.LoadAsync(file, new SimulationHostOptions(Deterministic: true));
+        await host.StartAsync();
+        await host.Runtime.InvokeCommandAsync("start");
+        host.Tick(TimeSpan.FromSeconds(5));
+        Assert.True(Convert.ToBoolean(host.Runtime.Read("running")!.Value));
+        Assert.True(Convert.ToInt32(host.Runtime.Read("speed")!.Value) > 0);
+    }
+
     private static string WriteTempConfig(int? opcPort, int? modbusPort)
     {
         var protocols = opcPort.HasValue || modbusPort.HasValue
@@ -85,6 +121,18 @@ public sealed class RuntimeCompositionTests
                 alarm:
                   type: boolean
                   initial: false
+                  access: read
+                running:
+                  type: boolean
+                  initial: false
+                  access: read
+                temperature:
+                  type: double
+                  initial: 25
+                  access: read
+                pressure:
+                  type: double
+                  initial: 0
                   access: read
               commands:
                 start:

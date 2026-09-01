@@ -1,0 +1,15 @@
+services:
+  industrial-sim:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: industrial-sim:local
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      INDUSTRIALSIM_DEVICE_CONFIG: /app/config/device.yaml
+    ports:
+      - "4840:4840"
+      - "5020:5020"
+      - "8080:8080"
+    volumes:
+      - ./examples/devices/pump.yaml:/app/config/device.yaml:ro

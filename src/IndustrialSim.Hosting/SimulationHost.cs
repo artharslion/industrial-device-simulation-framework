@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using IndustrialSim.Configuration;
 using IndustrialSim.Configuration.Models;
 using IndustrialSim.Core.Domain;
+using IndustrialSim.Devices.Pump;
 using IndustrialSim.Faults;
 using IndustrialSim.Protocols.Abstractions;
 using IndustrialSim.Protocols.Modbus;
@@ -26,14 +27,24 @@ public sealed class SimulationHost : IAsyncDisposable
     private readonly SimulationHostOptions _options;
     private CancellationTokenSource? _loopCts;
     private Task? _loopTask;
+    private Pump? _pump;
+    private TimeSpan _lastBehaviorTime;
     private bool _disposed;
 
     private SimulationHost(LoadedConfiguration configuration, SimulationHostOptions options)
     {
         _configuration = configuration;
         _options = options;
-        Runtime = new InMemoryDeviceRuntime(configuration.Device);
         Engine = new SimulationEngine(options.Deterministic ? new DeterministicClock() : new RealTimeClock());
+        var state = new StateStore(configuration.Device);
+        var commandHandlers = new Dictionary<string, Func<CancellationToken, Task>>(StringComparer.OrdinalIgnoreCase);
+        if (CanAttachPump(configuration.Device))
+        {
+            _pump = new Pump(state);
+            commandHandlers["start"] = _ => { _pump.Start(Engine.CurrentTime); return Task.CompletedTask; };
+            commandHandlers["stop"] = _ => { _pump.Stop(Engine.CurrentTime); return Task.CompletedTask; };
+        }
+        Runtime = new InMemoryDeviceRuntime(configuration.Device, state, commandHandlers);
         FaultManager = new FaultManager(Engine);
         _deviceFaultController = new DeviceFaultController(Runtime.State);
         Runtime.State.DataPointChanged += change => _events.Enqueue(change);
@@ -125,13 +136,18 @@ public sealed class SimulationHost : IAsyncDisposable
             scenario,
             Engine,
             State,
-            (_, command) => Runtime.InvokeCommandAsync(command).GetAwaiter().GetResult(),
-            (device, type) => ScheduleScenarioFault(device, type));
+            command: (_, command) => Runtime.InvokeCommandAsync(command).GetAwaiter().GetResult(),
+            faultAction: ScheduleScenarioFault);
         ScenarioRunner.Start();
         return ScenarioRunner;
     }
 
-    public void Tick(TimeSpan amount) => Engine.Tick(amount);
+    public void Tick(TimeSpan amount)
+    {
+        if (Engine.State != EngineState.Running) return;
+        Engine.Tick(amount);
+        UpdateDeviceBehavior(amount);
+    }
 
     public void Update() => Engine.Update();
 
@@ -148,6 +164,7 @@ public sealed class SimulationHost : IAsyncDisposable
         Engine.Reset();
         foreach (var point in Runtime.Definition.DataPoints)
             if (point.InitialValue is not null) State.SetInternal(new DataPointId(point.Name), point.InitialValue.Value, Engine.CurrentTime);
+        if (_pump is not null) _pump = new Pump(State);
     }
 
     public void ScheduleFault(FaultSpec fault) => FaultManager.Schedule(fault);
@@ -193,9 +210,29 @@ public sealed class SimulationHost : IAsyncDisposable
         _disposed = true;
     }
 
-    private void ScheduleScenarioFault(string device, string type)
+    private void ScheduleScenarioFault(FaultAction action)
     {
-        FaultManager.Schedule(new FaultSpec($"scenario-{Guid.NewGuid():N}", FaultCategory.Device, device, null, Engine.CurrentTime.Elapsed, Type: type));
+        var category = !string.IsNullOrWhiteSpace(action.Protocol) || action.Type.StartsWith("network.", StringComparison.OrdinalIgnoreCase)
+            ? FaultCategory.Network
+            : !string.IsNullOrWhiteSpace(action.DataPoint) || action.Type.StartsWith("data.", StringComparison.OrdinalIgnoreCase)
+                ? FaultCategory.Data
+                : FaultCategory.Device;
+        var type = action.Type.Contains('.') ? action.Type[(action.Type.LastIndexOf('.') + 1)..] : action.Type;
+        var target = category switch
+        {
+            FaultCategory.Network => action.Protocol,
+            FaultCategory.Data => action.DataPoint,
+            _ => null
+        };
+        FaultManager.Schedule(new FaultSpec(
+            $"scenario-{Guid.NewGuid():N}",
+            category,
+            string.IsNullOrWhiteSpace(action.Device) ? Runtime.Definition.Id.Value : action.Device,
+            target,
+            Engine.CurrentTime.Elapsed,
+            action.Duration,
+            type,
+            action.Metadata));
     }
 
     private void OnFaultLifecycleChanged(FaultEvent change)
@@ -253,6 +290,7 @@ public sealed class SimulationHost : IAsyncDisposable
 
     private void StartRealTimeLoop()
     {
+        _lastBehaviorTime = Engine.CurrentTime.Elapsed;
         _loopCts = new CancellationTokenSource();
         _loopTask = RunRealTimeLoopAsync(_loopCts.Token);
     }
@@ -262,8 +300,31 @@ public sealed class SimulationHost : IAsyncDisposable
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(25));
         try
         {
-            while (await timer.WaitForNextTickAsync(cancellationToken)) Engine.Update();
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                var now = Engine.CurrentTime.Elapsed;
+                if (Engine.State != EngineState.Running) { _lastBehaviorTime = now; continue; }
+                Engine.Update();
+                UpdateDeviceBehavior(now - _lastBehaviorTime);
+                _lastBehaviorTime = now;
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    private void UpdateDeviceBehavior(TimeSpan elapsed)
+    {
+        if (_pump is not null && elapsed >= TimeSpan.Zero) _pump.Update(elapsed, Engine.CurrentTime);
+    }
+
+    private static bool CanAttachPump(DeviceDefinition definition)
+    {
+        if (!definition.Type.Equals("pump", StringComparison.OrdinalIgnoreCase)) return false;
+        var points = definition.DataPoints.ToDictionary(point => point.Name, StringComparer.OrdinalIgnoreCase);
+        return points.TryGetValue("speed", out var speed) && speed.DataType == DataType.Int32
+            && points.TryGetValue("temperature", out var temperature) && temperature.DataType == DataType.Double
+            && points.TryGetValue("pressure", out var pressure) && pressure.DataType == DataType.Double
+            && points.TryGetValue("running", out var running) && running.DataType == DataType.Boolean
+            && points.TryGetValue("alarm", out var alarm) && alarm.DataType == DataType.Boolean;
     }
 }
