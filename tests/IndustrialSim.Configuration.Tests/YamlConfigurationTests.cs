@@ -75,4 +75,31 @@ protocols:
         Assert.Equal("pump-001", loaded.Device.Id.Value);
         Assert.Equal(4, loaded.ModbusMappings.Count);
     }
+
+    [Fact]
+    public void Validates_modbus_numeric_widths_orders_and_access_contracts()
+    {
+        var valid = new ModbusConfiguration
+        {
+            Mappings = new Dictionary<string, ModbusMappingConfiguration>
+            {
+                ["i8"] = new() { Register = 0, Type = "int8", Access = "readwrite" },
+                ["u64"] = new() { Register = 1, Type = "uint64", ByteOrder = "little", WordOrder = "little" },
+                ["double"] = new() { InputRegister = 5, Type = "double", Access = "read" }
+            }
+        };
+        var mappings = ModbusMappingValidator.Validate(valid);
+        Assert.Equal(new[] { 1, 4, 4 }, mappings.Select(mapping => mapping.Width));
+
+        Assert.Throws<ArgumentException>(() => ModbusMappingValidator.Validate(ConfigurationWith(new() { Register = 0, Type = "string" })));
+        Assert.Throws<ArgumentException>(() => ModbusMappingValidator.Validate(ConfigurationWith(new() { Register = 0, Type = "uint16", Access = "invalid" })));
+        Assert.Throws<ArgumentException>(() => ModbusMappingValidator.Validate(ConfigurationWith(new() { Register = 0, Type = "uint16", ByteOrder = "middle" })));
+        Assert.Throws<ArgumentException>(() => ModbusMappingValidator.Validate(ConfigurationWith(new() { InputRegister = 0, Type = "uint16", Access = "write" })));
+        Assert.Throws<ArgumentException>(() => ModbusMappingValidator.Validate(ConfigurationWith(new() { Register = 0, HoldingRegister = 1, Type = "uint16" })));
+    }
+
+    private static ModbusConfiguration ConfigurationWith(ModbusMappingConfiguration mapping) => new()
+    {
+        Mappings = new Dictionary<string, ModbusMappingConfiguration> { ["value"] = mapping }
+    };
 }

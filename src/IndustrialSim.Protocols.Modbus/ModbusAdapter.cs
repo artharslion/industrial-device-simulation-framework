@@ -1,67 +1,332 @@
 using System.Buffers.Binary;
+using System.Net;
+using System.Net.Sockets;
 using IndustrialSim.Configuration.Models;
 using IndustrialSim.Protocols.Abstractions;
-using System.Net.Sockets;
 
 namespace IndustrialSim.Protocols.Modbus;
 
 public sealed class ModbusAdapter : IProtocolAdapter
 {
-    private IDeviceRuntime? _runtime; private IReadOnlyDictionary<string, ValidatedModbusMapping> _mappings = new Dictionary<string, ValidatedModbusMapping>(); private TcpListener? _listener; private CancellationTokenSource? _serverCts;
-    public string Name => "modbus"; public bool IsRunning { get; private set; }
-    public bool IsDisconnected { get; private set; } public TimeSpan Latency { get; private set; }
-    public void ApplyTransportFault(string fault, TimeSpan duration) { IsDisconnected = fault.Equals("disconnect", StringComparison.OrdinalIgnoreCase) || fault.Equals("timeout", StringComparison.OrdinalIgnoreCase); Latency = fault.Equals("latency", StringComparison.OrdinalIgnoreCase) ? duration : TimeSpan.Zero; }
+    private IDeviceRuntime? _runtime;
+    private IReadOnlyDictionary<string, ValidatedModbusMapping> _mappings = new Dictionary<string, ValidatedModbusMapping>(StringComparer.OrdinalIgnoreCase);
+    private TcpListener? _listener;
+    private CancellationTokenSource? _serverCts;
+
+    public string Name => "modbus";
+    public bool IsRunning { get; private set; }
+    public bool IsDisconnected { get; private set; }
+    public TimeSpan Latency { get; private set; }
+    public int Port { get; private set; }
+
+    public void ApplyTransportFault(string fault, TimeSpan duration)
+    {
+        IsDisconnected = fault.Equals("disconnect", StringComparison.OrdinalIgnoreCase) || fault.Equals("timeout", StringComparison.OrdinalIgnoreCase);
+        Latency = fault.Equals("latency", StringComparison.OrdinalIgnoreCase) ? duration : TimeSpan.Zero;
+    }
+
     public void RecoverTransportFault() { IsDisconnected = false; Latency = TimeSpan.Zero; }
-    public async Task StartAsync(IDeviceRuntime runtime, ProtocolOptions options, CancellationToken cancellationToken = default) { cancellationToken.ThrowIfCancellationRequested(); _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime)); IsRunning = true; if (options.Port > 0) await StartServerAsync(options.Port, cancellationToken); }
-    public async Task StopAsync(CancellationToken cancellationToken = default) { cancellationToken.ThrowIfCancellationRequested(); _serverCts?.Cancel(); _listener?.Stop(); IsRunning = false; _runtime = null; if (_serverCts is not null) await Task.CompletedTask; }
+
+    public async Task StartAsync(IDeviceRuntime runtime, ProtocolOptions options, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
+        IsRunning = true;
+        if (options.Port > 0) await StartServerAsync(options.Port, cancellationToken);
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _serverCts?.Cancel();
+        _listener?.Stop();
+        _listener = null;
+        _serverCts?.Dispose();
+        _serverCts = null;
+        IsRunning = false;
+        _runtime = null;
+        Port = 0;
+        await Task.CompletedTask;
+    }
+
     public Task StartServerAsync(int port, CancellationToken cancellationToken = default)
     {
-        if (!IsRunning) throw new InvalidOperationException("Adapter must be started before opening the server.");
-        _listener = new TcpListener(System.Net.IPAddress.Any, port); _listener.Start(); Port = ((System.Net.IPEndPoint)_listener.LocalEndpoint).Port; _serverCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); _ = AcceptLoopAsync(_serverCts.Token); return Task.CompletedTask;
+        EnsureRunning();
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_listener is not null) throw new InvalidOperationException("Modbus server is already started.");
+        _listener = new TcpListener(IPAddress.Any, port);
+        _listener.Start();
+        Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
+        _serverCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _ = AcceptLoopAsync(_serverCts.Token);
+        return Task.CompletedTask;
     }
-    public int Port { get; private set; }
-    public void Configure(IEnumerable<ValidatedModbusMapping> mappings) => _mappings = mappings.ToDictionary(m => m.Name, StringComparer.OrdinalIgnoreCase);
-    public object? Read(string datapoint) { EnsureTransport(); Ensure(); return _runtime!.Read(datapoint)?.Value; }
+
+    public void Configure(IEnumerable<ValidatedModbusMapping> mappings)
+    {
+        ArgumentNullException.ThrowIfNull(mappings);
+        _mappings = mappings.ToDictionary(m => m.Name, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public object? Read(string datapoint)
+    {
+        EnsureTransport();
+        EnsureRunning();
+        return _runtime!.Read(datapoint)?.Value;
+    }
+
     public void Write(string datapoint, object? value)
     {
-        Ensure();
-        if (_mappings.TryGetValue(datapoint, out var mapping) && (mapping.Kind is not "coil" and not "register" || !CanWrite(mapping)))
+        EnsureRunning();
+        if (_mappings.TryGetValue(datapoint, out var mapping) && !CanWrite(mapping))
             throw new InvalidOperationException($"Mapping '{datapoint}' is not writable.");
-        var result = _runtime!.Write(datapoint, value); if (!result.Succeeded) throw new InvalidOperationException(result.Error);
+        var result = _runtime!.Write(datapoint, value);
+        if (!result.Succeeded) throw new InvalidOperationException(result.Error);
     }
-    public byte[] ReadRegisters(int address, int count, string kind = "register") { if (count < 1) throw new ArgumentException("Count must be positive."); var bytes = new byte[count * 2]; for (var i = 0; i < count; i++) { var mapping = _mappings.Values.FirstOrDefault(m => m.Kind == kind && m.Address <= address + i && address + i < m.Address + m.Width) ?? throw new ArgumentException("Illegal address."); var raw = Encode(mapping, Read(mapping.Name)); var offset = (address + i - mapping.Address) * 2; bytes[i * 2] = raw[offset]; bytes[i * 2 + 1] = raw[offset + 1]; } return bytes; }
-    private void Ensure() { if (!IsRunning || _runtime is null) throw new InvalidOperationException("Modbus adapter is not running."); }
-    private void EnsureTransport() { if (IsDisconnected) throw new IOException("Modbus transport disconnected."); }
+
+    public byte[] ReadRegisters(int address, int count, string kind = "register")
+    {
+        EnsureRunning();
+        if (count < 1 || address < 0 || address + count > 65536) throw new ArgumentException("Invalid Modbus register range.");
+        var bytes = new byte[count * 2];
+        var encodedMappings = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+        for (var offset = 0; offset < count; offset++)
+        {
+            var mapping = FindMapping(kind, address + offset);
+            if (!CanRead(mapping)) throw new InvalidOperationException($"Mapping '{mapping.Name}' is not readable.");
+            if (!encodedMappings.TryGetValue(mapping.Name, out var encoded))
+            {
+                encoded = Encode(mapping, _runtime!.Read(mapping.Name)?.Value);
+                encodedMappings.Add(mapping.Name, encoded);
+            }
+            var sourceOffset = (address + offset - mapping.Address) * 2;
+            bytes[offset * 2] = encoded[sourceOffset];
+            bytes[offset * 2 + 1] = encoded[sourceOffset + 1];
+        }
+        return bytes;
+    }
+
     private async Task AcceptLoopAsync(CancellationToken token)
     {
-        while (!token.IsCancellationRequested)
+        while (!token.IsCancellationRequested && _listener is not null)
         {
-            TcpClient client; try { client = await _listener!.AcceptTcpClientAsync(token); } catch { break; }
+            TcpClient client;
+            try { client = await _listener.AcceptTcpClientAsync(token); }
+            catch (OperationCanceledException) { break; }
+            catch (ObjectDisposedException) { break; }
+            catch (SocketException) { break; }
             _ = HandleClientAsync(client, token);
         }
     }
+
     private async Task HandleClientAsync(TcpClient client, CancellationToken token)
     {
-        using var clientScope = client; var stream = client.GetStream(); var header = new byte[7];
-        while (!token.IsCancellationRequested && client.Connected)
+        using (client)
         {
-            var read = 0; while (read < header.Length) { var n = await stream.ReadAsync(header.AsMemory(read, header.Length - read), token); if (n == 0) return; read += n; }
-            if (Latency > TimeSpan.Zero) await Task.Delay(Latency, token);
-            var length = (header[4] << 8) | header[5]; var body = new byte[length - 1]; read = 0; while (read < body.Length) { var n = await stream.ReadAsync(body.AsMemory(read, body.Length - read), token); if (n == 0) return; read += n; }
-            var function = body[0]; var address = (body[1] << 8) | body[2]; var count = (body[3] << 8) | body[4];
-            try {
-                EnsureTransport();
-                if (function is 1 or 2) { var bits = new byte[(count + 7) / 8]; for (var i = 0; i < count; i++) { var m = _mappings.Values.FirstOrDefault(x => x.Kind == (function == 1 ? "coil" : "discrete") && x.Address == address + i) ?? throw new ArgumentException("Illegal address."); if (Convert.ToBoolean(Read(m.Name))) bits[i / 8] |= (byte)(1 << (i % 8)); } await Reply(stream, header, function, bits, token); }
-                else if (function is 3 or 4) { var payload = ReadRegisters(address, count, function == 3 ? "register" : "input"); await Reply(stream, header, function, new[] { (byte)payload.Length }.Concat(payload).ToArray(), token); }
-                else if (function == 5) { var m = _mappings.Values.FirstOrDefault(x => x.Kind == "coil" && x.Address == address) ?? throw new ArgumentException("Illegal address."); Write(m.Name, body[3] == 0xFF); await Reply(stream, header, function, body[1..5], token); }
-                else if (function == 6) { var value = BinaryPrimitives.ReadUInt16BigEndian(body.AsSpan(3,2)); var m = _mappings.Values.FirstOrDefault(x => x.Kind == "register" && x.Address == address) ?? throw new ArgumentException("Illegal address."); Write(m.Name, ConvertValue(m.DataType, value)); await Reply(stream, header, function, body[1..5], token); }
-                else if (function == 16) { var byteCount = body[5]; for (var i=0;i<count;i++) { var m = _mappings.Values.FirstOrDefault(x => x.Kind == "register" && x.Address == address+i) ?? throw new ArgumentException("Illegal address."); Write(m.Name, ConvertValue(m.DataType, BinaryPrimitives.ReadUInt16BigEndian(body.AsSpan(6+i*2,2)))); } await Reply(stream, header, function, body[1..5], token); }
-                else throw new InvalidOperationException("Unsupported function.");
-            } catch { var error = new byte[] { (byte)(function | 0x80), 2 }; await Reply(stream, header, error[0], new[]{error[1]}, token); }
+            var stream = client.GetStream();
+            var header = new byte[7];
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    await ReadExactlyAsync(stream, header, token);
+                    var length = BinaryPrimitives.ReadUInt16BigEndian(header.AsSpan(4, 2));
+                    if (length < 2 || length > 254) throw new ModbusRequestException(3);
+                    var pdu = new byte[length - 1];
+                    await ReadExactlyAsync(stream, pdu, token);
+                    if (Latency > TimeSpan.Zero) await Task.Delay(Latency, token);
+                    await WriteResponseAsync(stream, header, ProcessRequest(pdu), token);
+                }
+            }
+            catch (EndOfStreamException) { }
+            catch (OperationCanceledException) { }
+            catch (IOException) { }
         }
     }
-    private static async Task Reply(NetworkStream stream, byte[] header, byte function, byte[] payload, CancellationToken token) { var response = new byte[8 + payload.Length]; Array.Copy(header, response, 4); response[4]=0; response[5]=(byte)(2+payload.Length); response[6]=header[6]; response[7]=function; Array.Copy(payload,0,response,8,payload.Length); await stream.WriteAsync(response, token); }
-    private static byte[] Encode(ValidatedModbusMapping m, object? value) { var b = new byte[m.Width*2]; switch(m.DataType.ToLowerInvariant()) { case "float32": BinaryPrimitives.WriteSingleBigEndian(b, Convert.ToSingle(value)); break; case "int32": BinaryPrimitives.WriteInt32BigEndian(b, Convert.ToInt32(value)); break; case "uint32": BinaryPrimitives.WriteUInt32BigEndian(b, Convert.ToUInt32(value)); break; case "int16": BinaryPrimitives.WriteInt16BigEndian(b, Convert.ToInt16(value)); break; default: BinaryPrimitives.WriteUInt16BigEndian(b, Convert.ToUInt16(value)); break; } return b; }
-    private static object ConvertValue(string type, ushort value) => type.ToLowerInvariant() switch { "int16" => (short)value, "int32" => (int)value, "uint32" => (uint)value, _ => value };
-    private static bool CanWrite(ValidatedModbusMapping mapping) => string.IsNullOrWhiteSpace(mapping.Access) || string.Equals(mapping.Access, "write", StringComparison.OrdinalIgnoreCase) || string.Equals(mapping.Access, "readwrite", StringComparison.OrdinalIgnoreCase);
+
+    private byte[] ProcessRequest(byte[] pdu)
+    {
+        if (pdu.Length == 0) return ExceptionResponse(0, 3);
+        var function = pdu[0];
+        try
+        {
+            EnsureTransport();
+            return function switch
+            {
+                1 or 2 => ReadBits(function, pdu),
+                3 or 4 => ReadRegistersWire(function, pdu),
+                5 => WriteSingleCoil(pdu),
+                6 => WriteSingleRegister(pdu),
+                16 => WriteMultipleRegisters(pdu),
+                _ => throw new ModbusRequestException(1)
+            };
+        }
+        catch (ModbusRequestException exception) { return ExceptionResponse(function, exception.Code); }
+        catch (InvalidOperationException) { return ExceptionResponse(function, 2); }
+        catch (ArgumentException) { return ExceptionResponse(function, 2); }
+    }
+
+    private byte[] ReadBits(byte function, byte[] pdu)
+    {
+        RequireLength(pdu, 5);
+        var address = ReadUInt16(pdu, 1);
+        var quantity = ReadUInt16(pdu, 3);
+        if (quantity is < 1 or > 2000) throw new ModbusRequestException(3);
+        var result = new byte[(quantity + 7) / 8];
+        var kind = function == 1 ? "coil" : "discrete";
+        for (var i = 0; i < quantity; i++)
+        {
+            var mapping = FindMapping(kind, address + i);
+            if (!CanRead(mapping)) throw new ModbusRequestException(2);
+            if (Convert.ToBoolean(_runtime!.Read(mapping.Name)?.Value)) result[i / 8] |= (byte)(1 << (i % 8));
+        }
+        return new[] { function, (byte)result.Length }.Concat(result).ToArray();
+    }
+
+    private byte[] ReadRegistersWire(byte function, byte[] pdu)
+    {
+        RequireLength(pdu, 5);
+        var address = ReadUInt16(pdu, 1);
+        var quantity = ReadUInt16(pdu, 3);
+        if (quantity is < 1 or > 125) throw new ModbusRequestException(3);
+        var payload = ReadRegisters(address, quantity, function == 3 ? "register" : "input");
+        return new[] { function, (byte)payload.Length }.Concat(payload).ToArray();
+    }
+
+    private byte[] WriteSingleCoil(byte[] pdu)
+    {
+        RequireLength(pdu, 5);
+        var address = ReadUInt16(pdu, 1);
+        var value = ReadUInt16(pdu, 3);
+        if (value is not (0x0000 or 0xFF00)) throw new ModbusRequestException(3);
+        var mapping = FindMapping("coil", address);
+        if (!CanWrite(mapping)) throw new ModbusRequestException(2);
+        Write(mapping.Name, value == 0xFF00);
+        return pdu;
+    }
+
+    private byte[] WriteSingleRegister(byte[] pdu)
+    {
+        RequireLength(pdu, 5);
+        var mapping = FindMapping("register", ReadUInt16(pdu, 1));
+        if (mapping.Width != 1 || !CanWrite(mapping)) throw new ModbusRequestException(2);
+        Write(mapping.Name, Decode(mapping, pdu.AsSpan(3, 2).ToArray()));
+        return pdu;
+    }
+
+    private byte[] WriteMultipleRegisters(byte[] pdu)
+    {
+        RequireLength(pdu, 6);
+        var address = ReadUInt16(pdu, 1);
+        var quantity = ReadUInt16(pdu, 3);
+        var byteCount = pdu[5];
+        if (quantity is < 1 or > 123 || byteCount != quantity * 2 || pdu.Length != 6 + byteCount) throw new ModbusRequestException(3);
+        var end = address + quantity;
+        var cursor = (int)address;
+        var writes = new List<(ValidatedModbusMapping Mapping, object Value)>();
+        while (cursor < end)
+        {
+            var mapping = FindMapping("register", cursor);
+            if (mapping.Address != cursor || !CanWrite(mapping) || mapping.Address + mapping.Width > end) throw new ModbusRequestException(2);
+            var offset = (mapping.Address - address) * 2;
+            writes.Add((mapping, Decode(mapping, pdu.AsSpan(6 + offset, mapping.Width * 2).ToArray())));
+            cursor = mapping.Address + mapping.Width;
+        }
+        foreach (var write in writes) Write(write.Mapping.Name, write.Value);
+        return new[] { (byte)16, pdu[1], pdu[2], pdu[3], pdu[4] };
+    }
+
+    private ValidatedModbusMapping FindMapping(string kind, int address) => _mappings.Values.FirstOrDefault(m => string.Equals(m.Kind, kind, StringComparison.OrdinalIgnoreCase) && m.Address <= address && address < m.Address + m.Width) ?? throw new ModbusRequestException(2);
+
+    private static byte[] Encode(ValidatedModbusMapping mapping, object? value)
+    {
+        var canonical = new byte[mapping.Width * 2];
+        switch (mapping.DataType.ToLowerInvariant())
+        {
+            case "int8": canonical[1] = unchecked((byte)Convert.ToSByte(value)); break;
+            case "uint8": canonical[1] = Convert.ToByte(value); break;
+            case "int16": BinaryPrimitives.WriteInt16BigEndian(canonical, Convert.ToInt16(value)); break;
+            case "uint16": BinaryPrimitives.WriteUInt16BigEndian(canonical, Convert.ToUInt16(value)); break;
+            case "int32": BinaryPrimitives.WriteInt32BigEndian(canonical, Convert.ToInt32(value)); break;
+            case "uint32": BinaryPrimitives.WriteUInt32BigEndian(canonical, Convert.ToUInt32(value)); break;
+            case "int64": BinaryPrimitives.WriteInt64BigEndian(canonical, Convert.ToInt64(value)); break;
+            case "uint64": BinaryPrimitives.WriteUInt64BigEndian(canonical, Convert.ToUInt64(value)); break;
+            case "float":
+            case "float32": BinaryPrimitives.WriteSingleBigEndian(canonical, Convert.ToSingle(value)); break;
+            case "double": BinaryPrimitives.WriteDoubleBigEndian(canonical, Convert.ToDouble(value)); break;
+            default: throw new ArgumentException($"Unsupported Modbus data type '{mapping.DataType}'.");
+        }
+        ApplyOrder(canonical, mapping.ByteOrder, mapping.WordOrder);
+        return canonical;
+    }
+
+    private static object Decode(ValidatedModbusMapping mapping, byte[] wire)
+    {
+        var canonical = wire.ToArray();
+        ApplyOrder(canonical, mapping.ByteOrder, mapping.WordOrder, true);
+        return mapping.DataType.ToLowerInvariant() switch
+        {
+            "int8" => (object)unchecked((sbyte)canonical[^1]),
+            "uint8" => canonical[^1],
+            "int16" => BinaryPrimitives.ReadInt16BigEndian(canonical),
+            "uint16" => BinaryPrimitives.ReadUInt16BigEndian(canonical),
+            "int32" => BinaryPrimitives.ReadInt32BigEndian(canonical),
+            "uint32" => BinaryPrimitives.ReadUInt32BigEndian(canonical),
+            "int64" => BinaryPrimitives.ReadInt64BigEndian(canonical),
+            "uint64" => BinaryPrimitives.ReadUInt64BigEndian(canonical),
+            "float" or "float32" => BinaryPrimitives.ReadSingleBigEndian(canonical),
+            "double" => BinaryPrimitives.ReadDoubleBigEndian(canonical),
+            _ => throw new ArgumentException($"Unsupported Modbus data type '{mapping.DataType}'.")
+        };
+    }
+
+    private static void ApplyOrder(byte[] bytes, string? byteOrder, string? wordOrder, bool reverse = false)
+    {
+        var littleBytes = string.Equals(byteOrder, "little", StringComparison.OrdinalIgnoreCase);
+        var littleWords = string.Equals(wordOrder, "little", StringComparison.OrdinalIgnoreCase);
+        if (reverse)
+        {
+            if (littleWords) ReverseWords(bytes);
+            if (littleBytes) SwapBytesInWords(bytes);
+        }
+        else
+        {
+            if (littleBytes) SwapBytesInWords(bytes);
+            if (littleWords) ReverseWords(bytes);
+        }
+    }
+
+    private static void SwapBytesInWords(byte[] bytes) { for (var i = 0; i < bytes.Length; i += 2) (bytes[i], bytes[i + 1]) = (bytes[i + 1], bytes[i]); }
+    private static void ReverseWords(byte[] bytes) { for (var left = 0; left < bytes.Length / 2; left += 2) { var right = bytes.Length - 2 - left; (bytes[left], bytes[right]) = (bytes[right], bytes[left]); (bytes[left + 1], bytes[right + 1]) = (bytes[right + 1], bytes[left + 1]); } }
+
+    private static async Task WriteResponseAsync(NetworkStream stream, byte[] requestHeader, byte[] pdu, CancellationToken token)
+    {
+        var response = new byte[7 + pdu.Length];
+        requestHeader.AsSpan(0, 4).CopyTo(response);
+        BinaryPrimitives.WriteUInt16BigEndian(response.AsSpan(4, 2), (ushort)(pdu.Length + 1));
+        response[6] = requestHeader[6];
+        pdu.CopyTo(response, 7);
+        await stream.WriteAsync(response, token);
+    }
+
+    private static byte[] ExceptionResponse(byte function, byte code) => new[] { (byte)(function | 0x80), code };
+    private static ushort ReadUInt16(byte[] bytes, int offset) => BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(offset, 2));
+    private static void RequireLength(byte[] pdu, int length) { if (pdu.Length < length) throw new ModbusRequestException(3); }
+    private void EnsureRunning() { if (!IsRunning || _runtime is null) throw new InvalidOperationException("Modbus adapter is not running."); }
+    private void EnsureTransport() { if (IsDisconnected) throw new ModbusRequestException(6); }
+    private static bool CanRead(ValidatedModbusMapping mapping) => string.IsNullOrWhiteSpace(mapping.Access) || !mapping.Access.Equals("write", StringComparison.OrdinalIgnoreCase);
+    private static bool CanWrite(ValidatedModbusMapping mapping) => mapping.Kind is "coil" or "register" && (string.IsNullOrWhiteSpace(mapping.Access) || mapping.Access.Equals("write", StringComparison.OrdinalIgnoreCase) || mapping.Access.Equals("readwrite", StringComparison.OrdinalIgnoreCase));
+
+    private static async Task ReadExactlyAsync(NetworkStream stream, byte[] buffer, CancellationToken token)
+    {
+        var offset = 0;
+        while (offset < buffer.Length)
+        {
+            var count = await stream.ReadAsync(buffer.AsMemory(offset), token);
+            if (count == 0) throw new EndOfStreamException();
+            offset += count;
+        }
+    }
+
+    private sealed class ModbusRequestException(byte code) : Exception { public byte Code { get; } = code; }
 }
