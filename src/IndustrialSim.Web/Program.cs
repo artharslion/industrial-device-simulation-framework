@@ -9,7 +9,7 @@ var app = builder.Build();
 await simulation.StartAsync(app.Lifetime.ApplicationStopping);
 
 app.MapIndustrialSimApi(simulation);
-app.MapGet("/", () => Results.Content("IndustrialSim Developer Console", "text/plain"));
+app.MapIndustrialSimDeveloperConsole();
 
 try
 {

@@ -36,4 +36,36 @@ public class CliTests
         Assert.Contains("cli-scenario", output.ToString(), StringComparison.Ordinal);
         Assert.Contains("speed=12", output.ToString(), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task Run_command_hosts_until_cancelled_and_reports_deterministic_options()
+    {
+        var config = Path.GetTempFileName();
+        await File.WriteAllTextAsync(config, """
+            device:
+              id: cli-runtime
+              type: sensor
+              datapoints:
+                value: { type: int32, initial: 1, access: readwrite }
+            """);
+        using var output = new StringWriter();
+        using var cancellation = new CancellationTokenSource();
+        var run = CliRunner.RunAsync(new[] { "run", config, "--deterministic", "--seed", "123" }, output, cancellationToken: cancellation.Token);
+        await Task.Delay(100);
+        Assert.False(run.IsCompleted);
+        cancellation.Cancel();
+        Assert.Equal(0, await run);
+        Assert.Contains("Deterministic=True", output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Seed=123", output.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Invalid_seed_returns_nonzero_with_actionable_error()
+    {
+        var config = Path.GetTempFileName();
+        await File.WriteAllTextAsync(config, "device: { id: bad-seed, type: sensor, datapoints: { value: { type: int32, initial: 1 } } }");
+        using var error = new StringWriter();
+        Assert.NotEqual(0, await CliRunner.RunAsync(new[] { "run", config, "--deterministic", "--seed", "invalid", "--duration", "0" }, error: error));
+        Assert.Contains("seed", error.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
 }

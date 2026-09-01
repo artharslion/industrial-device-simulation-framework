@@ -24,7 +24,7 @@ public sealed class CrossProtocolRuntimeFlowTests
         var opcPort = FreePort();
         var modbusPort = FreePort();
         var path = WriteConfiguration(opcPort, modbusPort);
-        await using var host = await SimulationHost.LoadAsync(path);
+        await using var host = await SimulationHost.LoadAsync(path, new SimulationHostOptions(Deterministic: true));
         await host.StartAsync();
         var web = await StartWebAsync(host);
         await using var webApp = web.App;

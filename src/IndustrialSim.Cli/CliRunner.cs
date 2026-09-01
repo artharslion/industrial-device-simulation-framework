@@ -30,21 +30,26 @@ public static class CliRunner
 
             if (args[0].Equals("run", StringComparison.OrdinalIgnoreCase))
             {
-                await using var host = await SimulationHost.LoadAsync(args[1], cancellationToken);
+                var options = ParseHostOptions(args);
+                await output.WriteLineAsync($"Starting runtime. Deterministic={options.Deterministic}, Seed={options.Seed}.");
+                await using var host = await SimulationHost.LoadAsync(args[1], options, cancellationToken);
                 await host.StartAsync(cancellationToken);
                 var duration = ParseDuration(args);
-                if (duration.HasValue) host.Tick(duration.Value);
-                await output.WriteLineAsync($"Runtime started at {host.Engine.CurrentTime.Elapsed}. OPC UA={IsRunning(host, "opcua")}, Modbus={IsRunning(host, "modbus")}.");
+                await output.WriteLineAsync($"Runtime started at {host.Engine.CurrentTime.Elapsed}. Deterministic={host.IsDeterministic}, Seed={host.Seed}, OPC UA={IsRunning(host, "opcua")}, Modbus={IsRunning(host, "modbus")}.");
+                await RunForAsync(host, duration, cancellationToken);
                 return 0;
             }
 
             if (args.Length >= 3 && args[0].Equals("scenario", StringComparison.OrdinalIgnoreCase) && args[1].Equals("run", StringComparison.OrdinalIgnoreCase))
             {
                 var configPath = Option(args, "--config") ?? throw new ArgumentException("scenario run requires --config <device-file>.");
-                await using var host = await SimulationHost.LoadAsync(configPath, cancellationToken);
+                var options = ParseHostOptions(args);
+                await using var host = await SimulationHost.LoadAsync(configPath, options, cancellationToken);
                 await host.StartAsync(cancellationToken);
                 host.RunScenario(await File.ReadAllTextAsync(args[2], cancellationToken));
-                host.Tick(ParseDuration(args) ?? TimeSpan.Zero);
+                var duration = ParseDuration(args);
+                if (duration.HasValue) await RunForAsync(host, duration, cancellationToken);
+                else await RunForAsync(host, null, cancellationToken);
                 var state = string.Join(", ", host.State.Snapshot().Select(item => $"{item.Key}={item.Value?.Value}"));
                 await output.WriteLineAsync($"Scenario '{host.ActiveScenarioName}' executed. {state}");
                 return 0;
@@ -79,5 +84,29 @@ public static class CliRunner
         if (value is null) return null;
         if (!double.TryParse(value, out var seconds) || seconds < 0) throw new ArgumentException("--duration must be a non-negative number of seconds.");
         return TimeSpan.FromSeconds(seconds);
+    }
+
+    private static SimulationHostOptions ParseHostOptions(string[] args)
+    {
+        var clock = Option(args, "--clock");
+        if (clock is not null && !clock.Equals("deterministic", StringComparison.OrdinalIgnoreCase) && !clock.Equals("realtime", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("--clock must be 'deterministic' or 'realtime'.");
+        var deterministic = args.Any(argument => argument.Equals("--deterministic", StringComparison.OrdinalIgnoreCase)) || clock?.Equals("deterministic", StringComparison.OrdinalIgnoreCase) == true;
+        var seedText = Option(args, "--seed");
+        if (seedText is not null && !int.TryParse(seedText, out _)) throw new ArgumentException("--seed must be a 32-bit integer.");
+        var seed = seedText is null ? 0 : int.Parse(seedText);
+        return new SimulationHostOptions(deterministic, seed);
+    }
+
+    private static async Task RunForAsync(SimulationHost host, TimeSpan? duration, CancellationToken cancellationToken)
+    {
+        if (duration is null)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return;
+        }
+        if (host.IsDeterministic) host.Tick(duration.Value);
+        else if (duration > TimeSpan.Zero) await Task.Delay(duration.Value, cancellationToken);
+        host.Update();
     }
 }

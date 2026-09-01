@@ -9,6 +9,7 @@ public sealed class SimulationEngine
 {
     private readonly ISimulationClock _clock;
     private readonly List<ScheduledCallback> _callbacks = [];
+    private readonly object _gate = new();
     private long _sequence;
 
     public SimulationEngine(ISimulationClock clock) => _clock = clock ?? throw new ArgumentNullException(nameof(clock));
@@ -35,18 +36,21 @@ public sealed class SimulationEngine
     {
         State = EngineState.Stopped;
         if (_clock is DeterministicClock deterministic) deterministic.Reset();
-        _callbacks.Clear();
+        lock (_gate) _callbacks.Clear();
     }
 
     public void Schedule(SimulationTime dueTime, Action callback)
     {
         ArgumentNullException.ThrowIfNull(callback);
-        _callbacks.Add(new ScheduledCallback(dueTime, _sequence++, callback));
-        _callbacks.Sort((left, right) =>
+        lock (_gate)
         {
-            var time = left.DueTime.CompareTo(right.DueTime);
-            return time != 0 ? time : left.Sequence.CompareTo(right.Sequence);
-        });
+            _callbacks.Add(new ScheduledCallback(dueTime, _sequence++, callback));
+            _callbacks.Sort((left, right) =>
+            {
+                var time = left.DueTime.CompareTo(right.DueTime);
+                return time != 0 ? time : left.Sequence.CompareTo(right.Sequence);
+            });
+        }
     }
 
     public void Tick(TimeSpan amount)
@@ -55,10 +59,26 @@ public sealed class SimulationEngine
         if (_clock is not DeterministicClock deterministic)
             throw new InvalidOperationException("Explicit ticks require a deterministic clock.");
         deterministic.Advance(amount);
-        while (_callbacks.Count > 0 && _callbacks[0].DueTime <= CurrentTime)
+        RunDueCallbacks();
+    }
+
+    public void Update()
+    {
+        if (State != EngineState.Running) return;
+        RunDueCallbacks();
+    }
+
+    private void RunDueCallbacks()
+    {
+        while (true)
         {
-            var callback = _callbacks[0].Callback;
-            _callbacks.RemoveAt(0);
+            Action callback;
+            lock (_gate)
+            {
+                if (_callbacks.Count == 0 || _callbacks[0].DueTime > CurrentTime) return;
+                callback = _callbacks[0].Callback;
+                _callbacks.RemoveAt(0);
+            }
             try { callback(); }
             catch (Exception exception) { CallbackFailed?.Invoke(this, exception); }
         }

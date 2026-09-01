@@ -12,7 +12,7 @@ public sealed class RuntimeCompositionTests
         var opcPort = FreePort();
         var modbusPort = FreePort();
         var file = WriteTempConfig(opcPort, modbusPort);
-        await using var host = await SimulationHost.LoadAsync(file);
+        await using var host = await SimulationHost.LoadAsync(file, new SimulationHostOptions(Deterministic: true));
 
         Assert.Equal("configured-device", host.Runtime.Definition.Id.Value);
         Assert.Same(host.Runtime.State, host.State);
@@ -47,7 +47,7 @@ public sealed class RuntimeCompositionTests
         await Assert.ThrowsAsync<ArgumentException>(() => SimulationHost.LoadAsync(invalid));
 
         var valid = WriteTempConfig(null, null);
-        await using var host = await SimulationHost.LoadAsync(valid);
+        await using var host = await SimulationHost.LoadAsync(valid, new SimulationHostOptions(Deterministic: true));
         using var cts = new CancellationTokenSource();
         cts.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => host.StartAsync(cts.Token));

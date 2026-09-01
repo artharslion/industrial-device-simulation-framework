@@ -7,6 +7,16 @@ namespace IndustrialSim.Runtime.Tests;
 public class SimulationEngineTests
 {
     [Fact]
+    public async Task Real_time_engine_executes_due_callbacks_when_updated()
+    {
+        var engine = new SimulationEngine(new RealTimeClock());
+        var executed = false;
+        engine.Schedule(new SimulationTime(TimeSpan.Zero), () => executed = true);
+        await engine.StartAsync();
+        engine.Update();
+        Assert.True(executed);
+    }
+    [Fact]
     public async Task Lifecycle_supports_start_pause_resume_stop_and_reset()
     {
         var clock = new DeterministicClock();

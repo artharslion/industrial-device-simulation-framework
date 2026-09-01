@@ -16,13 +16,47 @@ public sealed class FaultManager
     public FaultManager(SimulationEngine engine) => _engine = engine ?? throw new ArgumentNullException(nameof(engine));
     public event Action<FaultEvent>? LifecycleChanged;
     private readonly Dictionary<string, FaultSpec> _active = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _gate = new();
+    public IReadOnlyCollection<FaultSpec> ActiveFaults { get { lock (_gate) return _active.Values.ToArray(); } }
     public void Schedule(FaultSpec fault)
     {
-        if (fault.Start < TimeSpan.Zero || fault.Duration < TimeSpan.Zero) throw new ArgumentException("Fault times cannot be negative.");
+        Validate(fault);
         Emit(fault, FaultLifecycle.Scheduled, SimulationTime.Zero);
-        _engine.Schedule(new SimulationTime(fault.Start), () => { _active[fault.Id] = fault; Emit(fault, FaultLifecycle.Active, _engine.CurrentTime); if (fault.Duration is { } d) _engine.Schedule(new SimulationTime(fault.Start + d), () => Recover(fault.Id)); });
+        _engine.Schedule(new SimulationTime(fault.Start), () => ActivateCore(fault));
     }
-    public bool Recover(string id) { if (!_active.Remove(id, out var fault)) return false; Emit(fault, FaultLifecycle.Recovered, _engine.CurrentTime); return true; }
+
+    public void Activate(FaultSpec fault)
+    {
+        Validate(fault);
+        Emit(fault, FaultLifecycle.Scheduled, _engine.CurrentTime);
+        ActivateCore(fault);
+    }
+
+    public bool Recover(string id)
+    {
+        FaultSpec? fault;
+        lock (_gate) { if (!_active.Remove(id, out fault)) return false; }
+        Emit(fault, FaultLifecycle.Recovered, _engine.CurrentTime);
+        return true;
+    }
+
+    private void ActivateCore(FaultSpec fault)
+    {
+        lock (_gate)
+        {
+            if (_active.ContainsKey(fault.Id)) throw new InvalidOperationException($"Fault '{fault.Id}' is already active.");
+            _active[fault.Id] = fault;
+        }
+        Emit(fault, FaultLifecycle.Active, _engine.CurrentTime);
+        if (fault.Duration is { } duration) _engine.Schedule(new SimulationTime(_engine.CurrentTime.Elapsed + duration), () => Recover(fault.Id));
+    }
+
+    private static void Validate(FaultSpec fault)
+    {
+        ArgumentNullException.ThrowIfNull(fault);
+        if (string.IsNullOrWhiteSpace(fault.Id)) throw new ArgumentException("Fault id cannot be blank.");
+        if (fault.Start < TimeSpan.Zero || fault.Duration < TimeSpan.Zero) throw new ArgumentException("Fault times cannot be negative.");
+    }
     private void Emit(FaultSpec fault, FaultLifecycle lifecycle, SimulationTime time) => LifecycleChanged?.Invoke(new FaultEvent(fault, lifecycle, time));
 }
 

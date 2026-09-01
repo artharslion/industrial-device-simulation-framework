@@ -13,6 +13,8 @@ using IndustrialSim.Scenarios;
 
 namespace IndustrialSim.Hosting;
 
+public sealed record SimulationHostOptions(bool Deterministic = false, int Seed = 0);
+
 public sealed class SimulationHost : IAsyncDisposable
 {
     private readonly LoadedConfiguration _configuration;
@@ -21,13 +23,17 @@ public sealed class SimulationHost : IAsyncDisposable
     private readonly Dictionary<string, object?> _faultPreviousValues = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DataFaultProcessor> _dataFaultProcessors = new(StringComparer.OrdinalIgnoreCase);
     private readonly DeviceFaultController _deviceFaultController;
+    private readonly SimulationHostOptions _options;
+    private CancellationTokenSource? _loopCts;
+    private Task? _loopTask;
     private bool _disposed;
 
-    private SimulationHost(LoadedConfiguration configuration)
+    private SimulationHost(LoadedConfiguration configuration, SimulationHostOptions options)
     {
         _configuration = configuration;
+        _options = options;
         Runtime = new InMemoryDeviceRuntime(configuration.Device);
-        Engine = new SimulationEngine(new DeterministicClock());
+        Engine = new SimulationEngine(options.Deterministic ? new DeterministicClock() : new RealTimeClock());
         FaultManager = new FaultManager(Engine);
         _deviceFaultController = new DeviceFaultController(Runtime.State);
         Runtime.State.DataPointChanged += change => _events.Enqueue(change);
@@ -52,22 +58,31 @@ public sealed class SimulationHost : IAsyncDisposable
     public IReadOnlyDictionary<string, IProtocolAdapter> Protocols => _protocols;
     public IReadOnlyCollection<object> Events => _events.ToArray();
     public bool IsRunning { get; private set; }
+    public bool IsDeterministic => _options.Deterministic;
+    public int Seed => _options.Seed;
 
-    public static async Task<SimulationHost> LoadAsync(string path, CancellationToken cancellationToken = default)
+    public static Task<SimulationHost> LoadAsync(string path, CancellationToken cancellationToken = default) => LoadAsync(path, new SimulationHostOptions(), cancellationToken);
+
+    public static async Task<SimulationHost> LoadAsync(string path, SimulationHostOptions options, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Configuration path cannot be blank.", nameof(path));
         if (!File.Exists(path)) throw new FileNotFoundException($"Device configuration file '{path}' was not found.", path);
         var yaml = await File.ReadAllTextAsync(path, cancellationToken);
-        return new SimulationHost(new YamlConfigurationLoader().Load(yaml));
+        return new SimulationHost(new YamlConfigurationLoader().Load(yaml), options);
     }
 
-    public static SimulationHost Create(DeviceDefinition definition) => new(new LoadedConfiguration(new RootConfiguration(), definition, []));
+    public static SimulationHost Create(DeviceDefinition definition, SimulationHostOptions? options = null) => new(new LoadedConfiguration(new RootConfiguration(), definition, []), options ?? new SimulationHostOptions());
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
-        if (IsRunning) return;
+        if (IsRunning)
+        {
+            await Engine.StartAsync(cancellationToken);
+            if (!IsDeterministic && _loopTask is null) StartRealTimeLoop();
+            return;
+        }
         var started = new List<IProtocolAdapter>();
         try
         {
@@ -90,6 +105,7 @@ public sealed class SimulationHost : IAsyncDisposable
                 started.Add(protocol);
             }
             IsRunning = true;
+            if (!IsDeterministic) StartRealTimeLoop();
         }
         catch
         {
@@ -103,6 +119,7 @@ public sealed class SimulationHost : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var scenario = new ScenarioParser().Parse(yaml);
+        ScenarioRunner?.Stop();
         ActiveScenarioName = scenario.Name;
         ScenarioRunner = new ScenarioRunner(
             scenario,
@@ -116,7 +133,26 @@ public sealed class SimulationHost : IAsyncDisposable
 
     public void Tick(TimeSpan amount) => Engine.Tick(amount);
 
+    public void Update() => Engine.Update();
+
+    public bool StopScenario()
+    {
+        if (ScenarioRunner is null || !ScenarioRunner.IsRunning) return false;
+        ScenarioRunner.Stop();
+        return true;
+    }
+
+    public void Reset()
+    {
+        StopScenario();
+        Engine.Reset();
+        foreach (var point in Runtime.Definition.DataPoints)
+            if (point.InitialValue is not null) State.SetInternal(new DataPointId(point.Name), point.InitialValue.Value, Engine.CurrentTime);
+    }
+
     public void ScheduleFault(FaultSpec fault) => FaultManager.Schedule(fault);
+
+    public void ActivateFault(FaultSpec fault) => FaultManager.Activate(fault);
 
     public bool RecoverFault(string id) => FaultManager.Recover(id);
 
@@ -136,6 +172,14 @@ public sealed class SimulationHost : IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (!IsRunning && Engine.State == EngineState.Stopped) return;
+        if (_loopCts is not null)
+        {
+            await _loopCts.CancelAsync();
+            if (_loopTask is not null) await _loopTask;
+            _loopCts.Dispose();
+            _loopCts = null;
+            _loopTask = null;
+        }
         foreach (var protocol in _protocols.Values.Reverse())
             if (protocol.IsRunning) await protocol.StopAsync(cancellationToken);
         await Engine.StopAsync(cancellationToken);
@@ -170,7 +214,7 @@ public sealed class SimulationHost : IAsyncDisposable
                 var current = State.Get(new DataPointId(fault.Target))?.Value;
                 _faultPreviousValues[fault.Id] = current;
                 if (!Enum.TryParse<DataFaultType>(fault.Type, true, out var dataType)) throw new ArgumentException($"Data fault '{fault.Id}' has unsupported type '{fault.Type}'.");
-                var seed = MetadataInt(fault, "seed");
+                var seed = fault.Metadata is not null && fault.Metadata.ContainsKey("seed") ? MetadataInt(fault, "seed") : Seed;
                 var parameter = MetadataDouble(fault, "parameter");
                 var processor = new DataFaultProcessor(seed);
                 _dataFaultProcessors[fault.Id] = processor;
@@ -206,4 +250,20 @@ public sealed class SimulationHost : IAsyncDisposable
 
     private static int MetadataInt(FaultSpec fault, string name) => fault.Metadata is not null && fault.Metadata.TryGetValue(name, out var value) && int.TryParse(value, out var parsed) ? parsed : 0;
     private static double MetadataDouble(FaultSpec fault, string name) => fault.Metadata is not null && fault.Metadata.TryGetValue(name, out var value) && double.TryParse(value, out var parsed) ? parsed : 0;
+
+    private void StartRealTimeLoop()
+    {
+        _loopCts = new CancellationTokenSource();
+        _loopTask = RunRealTimeLoopAsync(_loopCts.Token);
+    }
+
+    private async Task RunRealTimeLoopAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(25));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken)) Engine.Update();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
 }

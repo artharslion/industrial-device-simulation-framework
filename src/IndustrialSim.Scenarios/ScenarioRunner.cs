@@ -14,7 +14,9 @@ public sealed class ScenarioRunner
     private readonly Action<string, string>? _command;
     private readonly Action<string, string>? _fault;
     private bool _started;
+    private bool _stopped;
     public event Action<ScenarioAction, SimulationTime>? ActionExecuted;
+    public bool IsRunning => _started && !_stopped;
 
     public ScenarioRunner(ScenarioDefinition scenario, SimulationEngine engine, StateStore state, Action<string, string>? command = null, Action<string, string>? fault = null)
     { _scenario = scenario ?? throw new ArgumentNullException(nameof(scenario)); _engine = engine ?? throw new ArgumentNullException(nameof(engine)); _state = state ?? throw new ArgumentNullException(nameof(state)); _command = command; _fault = fault; }
@@ -37,9 +39,12 @@ public sealed class ScenarioRunner
         }
     }
 
-    private void ScheduleEvery(ScenarioAction action, TimeSpan interval, SimulationTime due) => _engine.Schedule(due, () => { Execute(action); ScheduleEvery(action, interval, due + interval); });
+    public void Stop() => _stopped = true;
+
+    private void ScheduleEvery(ScenarioAction action, TimeSpan interval, SimulationTime due) => _engine.Schedule(due, () => { if (_stopped) return; Execute(action); ScheduleEvery(action, interval, due + interval); });
     private void ScheduleWhen(ScenarioAction action, WhenTrigger trigger) => _engine.Schedule(new SimulationTime(TimeSpan.Zero), () =>
     {
+        if (_stopped) return;
         if (ConditionEvaluator.Evaluate(trigger.Condition, _state)) Execute(action);
         else _engine.Schedule(new SimulationTime(_engine.CurrentTime.Elapsed + TimeSpan.FromMilliseconds(100)), () => ScheduleWhen(action, trigger));
     });
@@ -47,6 +52,7 @@ public sealed class ScenarioRunner
 
     private void Execute(ScenarioAction action)
     {
+        if (_stopped) return;
         switch (action)
         {
             case SetAction set: _state.SetInternal(new DataPointId(set.DataPoint), set.Value, _engine.CurrentTime); break;
@@ -63,7 +69,7 @@ public sealed class ScenarioRunner
         var steps = Math.Max(1, (int)Math.Ceiling(duration.TotalMilliseconds / 100d));
         for (var i = 0; i <= steps; i++)
         {
-            var index = i; _engine.Schedule(new SimulationTime(_engine.CurrentTime.Elapsed + duration * index / steps), () => _state.SetInternal(new DataPointId(ramp.DataPoint), ramp.From + (ramp.To - ramp.From) * index / steps, _engine.CurrentTime));
+            var index = i; _engine.Schedule(new SimulationTime(_engine.CurrentTime.Elapsed + duration * index / steps), () => { if (!_stopped) _state.SetInternal(new DataPointId(ramp.DataPoint), ramp.From + (ramp.To - ramp.From) * index / steps, _engine.CurrentTime); });
         }
     }
 }
