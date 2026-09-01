@@ -18,6 +18,9 @@ public sealed class SimulationHost : IAsyncDisposable
     private readonly LoadedConfiguration _configuration;
     private readonly Dictionary<string, IProtocolAdapter> _protocols = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentQueue<object> _events = new();
+    private readonly Dictionary<string, object?> _faultPreviousValues = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DataFaultProcessor> _dataFaultProcessors = new(StringComparer.OrdinalIgnoreCase);
+    private readonly DeviceFaultController _deviceFaultController;
     private bool _disposed;
 
     private SimulationHost(LoadedConfiguration configuration)
@@ -26,8 +29,9 @@ public sealed class SimulationHost : IAsyncDisposable
         Runtime = new InMemoryDeviceRuntime(configuration.Device);
         Engine = new SimulationEngine(new DeterministicClock());
         FaultManager = new FaultManager(Engine);
+        _deviceFaultController = new DeviceFaultController(Runtime.State);
         Runtime.State.DataPointChanged += change => _events.Enqueue(change);
-        FaultManager.LifecycleChanged += change => _events.Enqueue(change);
+        FaultManager.LifecycleChanged += OnFaultLifecycleChanged;
 
         if (configuration.Configuration.Protocols?.Opcua?.Enabled == true)
             _protocols.Add("opcua", new OpcUaAdapter());
@@ -112,6 +116,10 @@ public sealed class SimulationHost : IAsyncDisposable
 
     public void Tick(TimeSpan amount) => Engine.Tick(amount);
 
+    public void ScheduleFault(FaultSpec fault) => FaultManager.Schedule(fault);
+
+    public bool RecoverFault(string id) => FaultManager.Recover(id);
+
     public void ApplyNetworkFault(string protocol, string type, TimeSpan duration)
     {
         if (!_protocols.TryGetValue(protocol, out var adapter)) throw new ArgumentException($"Protocol '{protocol}' is not configured.", nameof(protocol));
@@ -145,4 +153,57 @@ public sealed class SimulationHost : IAsyncDisposable
     {
         FaultManager.Schedule(new FaultSpec($"scenario-{Guid.NewGuid():N}", FaultCategory.Device, device, null, Engine.CurrentTime.Elapsed, Type: type));
     }
+
+    private void OnFaultLifecycleChanged(FaultEvent change)
+    {
+        _events.Enqueue(change);
+        if (change.Lifecycle == FaultLifecycle.Active) ApplyFault(change.Fault);
+        else if (change.Lifecycle == FaultLifecycle.Recovered) RecoverFaultEffect(change.Fault);
+    }
+
+    private void ApplyFault(FaultSpec fault)
+    {
+        switch (fault.Category)
+        {
+            case FaultCategory.Data:
+                if (string.IsNullOrWhiteSpace(fault.Target)) throw new ArgumentException($"Data fault '{fault.Id}' requires a datapoint target.");
+                var current = State.Get(new DataPointId(fault.Target))?.Value;
+                _faultPreviousValues[fault.Id] = current;
+                if (!Enum.TryParse<DataFaultType>(fault.Type, true, out var dataType)) throw new ArgumentException($"Data fault '{fault.Id}' has unsupported type '{fault.Type}'.");
+                var seed = MetadataInt(fault, "seed");
+                var parameter = MetadataDouble(fault, "parameter");
+                var processor = new DataFaultProcessor(seed);
+                _dataFaultProcessors[fault.Id] = processor;
+                State.SetInternal(new DataPointId(fault.Target), processor.Apply(dataType, current, parameter), Engine.CurrentTime);
+                break;
+            case FaultCategory.Device:
+                if (!Enum.TryParse<DeviceFaultType>(fault.Type, true, out var deviceType)) throw new ArgumentException($"Device fault '{fault.Id}' has unsupported type '{fault.Type}'.");
+                _deviceFaultController.Activate(deviceType, Engine.CurrentTime);
+                break;
+            case FaultCategory.Network:
+                if (string.IsNullOrWhiteSpace(fault.Target)) throw new ArgumentException($"Network fault '{fault.Id}' requires a protocol target.");
+                ApplyNetworkFault(fault.Target, fault.Type ?? "disconnect", fault.Duration ?? TimeSpan.Zero);
+                break;
+        }
+    }
+
+    private void RecoverFaultEffect(FaultSpec fault)
+    {
+        switch (fault.Category)
+        {
+            case FaultCategory.Data when !string.IsNullOrWhiteSpace(fault.Target):
+                if (_faultPreviousValues.Remove(fault.Id, out var previous)) State.SetInternal(new DataPointId(fault.Target), previous, Engine.CurrentTime);
+                if (_dataFaultProcessors.Remove(fault.Id, out var processor)) processor.Recover();
+                break;
+            case FaultCategory.Device:
+                if (Enum.TryParse<DeviceFaultType>(fault.Type, true, out var deviceType)) _deviceFaultController.Recover(deviceType, Engine.CurrentTime);
+                break;
+            case FaultCategory.Network when !string.IsNullOrWhiteSpace(fault.Target):
+                RecoverNetworkFault(fault.Target);
+                break;
+        }
+    }
+
+    private static int MetadataInt(FaultSpec fault, string name) => fault.Metadata is not null && fault.Metadata.TryGetValue(name, out var value) && int.TryParse(value, out var parsed) ? parsed : 0;
+    private static double MetadataDouble(FaultSpec fault, string name) => fault.Metadata is not null && fault.Metadata.TryGetValue(name, out var value) && double.TryParse(value, out var parsed) ? parsed : 0;
 }

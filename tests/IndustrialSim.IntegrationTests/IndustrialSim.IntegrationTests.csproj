@@ -15,7 +15,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Client" Version="1.5.378.134" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\IndustrialSim.Hosting\IndustrialSim.Hosting.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Web\IndustrialSim.Web.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
