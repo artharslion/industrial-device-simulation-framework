@@ -3,6 +3,7 @@ using IndustrialSim.Protocols.Abstractions;
 using IndustrialSim.Protocols.OpcUa;
 using Opc.Ua;
 using Opc.Ua.Client;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -98,6 +99,59 @@ public class ProtocolContractTests
         using var recovered = await CreateSessionAsync(config, port);
         Assert.Equal(9, Convert.ToInt32((await recovered.ReadValueAsync(node)).Value));
         Assert.True(adapter.IsRunning);
+        await adapter.StopAsync();
+    }
+
+    [Fact]
+    public async Task Standard_server_maps_int8_uint8_and_reports_runtime_events()
+    {
+        var runtime = new InMemoryDeviceRuntime(new DeviceDefinition(new DeviceId("scalar-001"), "sensor", new[]
+        {
+            new DataPointDefinition("signed", DataType.Int8, DataPointAccess.Read, (sbyte)-7),
+            new DataPointDefinition("unsigned", DataType.UInt8, DataPointAccess.Read, (byte)250)
+        }, new[] { new CommandDefinition("reset") }));
+        var adapter = new OpcUaAdapter();
+        var port = GetFreePort();
+        await adapter.StartAsync(runtime, new ProtocolOptions($"opc.tcp://127.0.0.1:{port}", port));
+        var config = await CreateClientConfigurationAsync();
+        using var session = await CreateSessionAsync(config, port);
+
+        var signed = Assert.IsAssignableFrom<VariableNode>(await session.ReadNodeAsync(new NodeId("scalar-001/signed", 2)));
+        var unsigned = Assert.IsAssignableFrom<VariableNode>(await session.ReadNodeAsync(new NodeId("scalar-001/unsigned", 2)));
+        Assert.Equal(DataTypeIds.SByte, signed.DataType);
+        Assert.Equal(DataTypeIds.Byte, unsigned.DataType);
+
+        var filter = new EventFilter();
+        filter.AddSelectClause(ObjectTypeIds.BaseEventType, BrowseNames.Message);
+        var messages = new ConcurrentQueue<string>();
+        var received = new TaskCompletionSource<IReadOnlyList<string>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var subscription = new Subscription(session.DefaultSubscription) { PublishingInterval = 50 };
+        Assert.True(session.AddSubscription(subscription));
+        await subscription.CreateAsync(CancellationToken.None);
+        var monitored = new MonitoredItem(subscription.DefaultItem)
+        {
+            StartNodeId = ObjectIds.Server,
+            AttributeId = Attributes.EventNotifier,
+            QueueSize = 10,
+            DiscardOldest = true,
+            Filter = filter
+        };
+        monitored.Notification += (_, args) =>
+        {
+            if (args.NotificationValue is EventFieldList fields && fields.EventFields.FirstOrDefault().Value is LocalizedText message)
+            {
+                messages.Enqueue(message.Text);
+                if (messages.Count >= 4) received.TrySetResult(messages.ToArray());
+            }
+        };
+        subscription.AddItem(monitored);
+        await subscription.ApplyChangesAsync(CancellationToken.None);
+
+        runtime.Publish(new DeviceStarted(SimulationTime.Zero, runtime.Definition.Id));
+        runtime.State.SetInternal(new DataPointId("signed"), (sbyte)-6);
+        await runtime.InvokeCommandAsync("reset");
+        runtime.Publish(new DeviceStopped(SimulationTime.Zero, runtime.Definition.Id));
+        Assert.Equal(new[] { "DeviceStarted", "DataPointChanged:signed", "CommandExecuted:reset", "DeviceStopped" }, await received.Task.WaitAsync(TimeSpan.FromSeconds(5)));
         await adapter.StopAsync();
     }
 

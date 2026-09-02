@@ -32,18 +32,19 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
     private readonly IDeviceRuntime _runtime;
     private readonly OpcUaTransportFaultController _transportFault;
     private readonly Dictionary<string, BaseDataVariableState> _variables = new(StringComparer.OrdinalIgnoreCase);
+    private FolderState? _device;
 
     public IndustrialNodeManager(IServerInternal server, ApplicationConfiguration configuration, IDeviceRuntime runtime, OpcUaTransportFaultController transportFault)
         : base(server, configuration, NamespaceUri)
     {
         _runtime = runtime;
         _transportFault = transportFault;
-        _runtime.State.DataPointChanged += OnDataPointChanged;
+        _runtime.RuntimeEventPublished += OnRuntimeEvent;
     }
 
     public new void Dispose()
     {
-        _runtime.State.DataPointChanged -= OnDataPointChanged;
+        _runtime.RuntimeEventPublished -= OnRuntimeEvent;
         base.Dispose();
     }
 
@@ -55,11 +56,16 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
             NodeId = new NodeId(_runtime.Definition.Id.Value, NamespaceIndex),
             BrowseName = new QualifiedName(_runtime.Definition.Id.Value, NamespaceIndex),
             DisplayName = _runtime.Definition.Id.Value,
-            TypeDefinitionId = ObjectTypeIds.FolderType
+            TypeDefinitionId = ObjectTypeIds.FolderType,
+            EventNotifier = EventNotifiers.SubscribeToEvents
         };
+        _device = device;
         device.AddReference(ReferenceTypeIds.Organizes, true, ObjectIds.ObjectsFolder);
-        AddRootReference(externalReferences, device);
+        device.AddReference(ReferenceTypeIds.HasNotifier, true, ObjectIds.ObjectsFolder);
+        AddRootReference(externalReferences, device, ReferenceTypeIds.Organizes);
+        AddRootReference(externalReferences, device, ReferenceTypeIds.HasNotifier);
         AddPredefinedNode(context, device);
+        AddRootNotifier(device);
 
         foreach (var point in _runtime.Definition.DataPoints)
         {
@@ -106,14 +112,14 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
         }
     }
 
-    private void AddRootReference(IDictionary<NodeId, IList<IReference>> externalReferences, NodeState node)
+    private void AddRootReference(IDictionary<NodeId, IList<IReference>> externalReferences, NodeState node, NodeId referenceType)
     {
         if (!externalReferences.TryGetValue(ObjectIds.ObjectsFolder, out var references))
         {
             references = new List<IReference>();
             externalReferences[ObjectIds.ObjectsFolder] = references;
         }
-        references.Add(new NodeStateReference(ReferenceTypeIds.Organizes, false, node.NodeId));
+        references.Add(new NodeStateReference(referenceType, false, node.NodeId));
     }
 
     private ServiceResult ReadValue(ISystemContext context, NodeState node, NumericRange indexRange, QualifiedName dataEncoding, ref object value, ref StatusCode statusCode, ref DateTime timestamp)
@@ -134,14 +140,28 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
         return result.Succeeded ? ServiceResult.Good : StatusCodes.BadNotWritable;
     }
 
-    private void OnDataPointChanged(DataPointChanged change)
+    private void OnRuntimeEvent(RuntimeEvent runtimeEvent)
     {
         lock (Lock)
         {
-            if (!_variables.TryGetValue(change.DataPointId.Value, out var variable)) return;
-            variable.Value = change.NewValue.Value;
-            variable.Timestamp = DateTime.UtcNow;
-            variable.ClearChangeMasks(SystemContext, false);
+            if (runtimeEvent is DataPointChanged change && _variables.TryGetValue(change.DataPointId.Value, out var variable))
+            {
+                variable.Value = change.NewValue.Value;
+                variable.Timestamp = DateTime.UtcNow;
+                variable.ClearChangeMasks(SystemContext, false);
+            }
+            if (_device is null) return;
+            var message = runtimeEvent switch
+            {
+                DataPointChanged dataPointChange => $"DataPointChanged:{dataPointChange.DataPointId.Value}",
+                CommandExecuted command => $"CommandExecuted:{command.CommandName}",
+                DeviceStarted => "DeviceStarted",
+                DeviceStopped => "DeviceStopped",
+                _ => runtimeEvent.GetType().Name
+            };
+            var eventState = new BaseEventState(null);
+            eventState.Initialize(SystemContext, _device, EventSeverity.Medium, new LocalizedText(message));
+            Server.ReportEvent(SystemContext, eventState);
         }
     }
 
@@ -156,9 +176,11 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
     private static NodeId ToOpcUaDataType(DataType type) => type switch
     {
         DataType.Boolean => DataTypeIds.Boolean,
+        DataType.Int8 => DataTypeIds.SByte,
         DataType.Int16 => DataTypeIds.Int16,
         DataType.Int32 => DataTypeIds.Int32,
         DataType.Int64 => DataTypeIds.Int64,
+        DataType.UInt8 => DataTypeIds.Byte,
         DataType.UInt16 => DataTypeIds.UInt16,
         DataType.UInt32 => DataTypeIds.UInt32,
         DataType.UInt64 => DataTypeIds.UInt64,
