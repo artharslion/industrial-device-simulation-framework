@@ -33,9 +33,15 @@ public sealed class DeterministicClock : ISimulationClock
 
 public sealed class RealTimeClock : ISimulationClock
 {
+    private readonly object _gate = new();
     private readonly DateTimeOffset _startUtc = DateTimeOffset.UtcNow;
-    private readonly System.Diagnostics.Stopwatch _stopwatch = System.Diagnostics.Stopwatch.StartNew();
-    public TimeSpan Elapsed => _stopwatch.Elapsed;
-    public DateTimeOffset UtcNow => _startUtc + _stopwatch.Elapsed;
+    private readonly System.Diagnostics.Stopwatch _stopwatch = new();
+    public TimeSpan Elapsed { get { lock (_gate) return _stopwatch.Elapsed; } }
+    public DateTimeOffset UtcNow { get { lock (_gate) return _startUtc + _stopwatch.Elapsed; } }
     public bool IsDeterministic => false;
+
+    public void Start() { lock (_gate) _stopwatch.Start(); }
+    public void Pause() { lock (_gate) _stopwatch.Stop(); }
+    public void Stop() { lock (_gate) _stopwatch.Stop(); }
+    public void Reset() { lock (_gate) _stopwatch.Reset(); }
 }

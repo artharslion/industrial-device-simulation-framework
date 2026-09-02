@@ -70,4 +70,24 @@ public class SimulationEngineTests
         Assert.Equal(EngineState.Running, engine.State);
         Assert.Equal(1, errors);
     }
+
+    [Fact]
+    public async Task Real_time_pause_and_stop_freeze_simulation_time_until_resumed()
+    {
+        var engine = new SimulationEngine(new RealTimeClock());
+        await engine.StartAsync();
+        await Task.Delay(40);
+        engine.Pause();
+        var pausedAt = engine.CurrentTime.Elapsed;
+        await Task.Delay(50);
+        Assert.InRange(engine.CurrentTime.Elapsed - pausedAt, TimeSpan.Zero, TimeSpan.FromMilliseconds(10));
+
+        await engine.StartAsync();
+        await Task.Delay(40);
+        Assert.True(engine.CurrentTime.Elapsed > pausedAt);
+        await engine.StopAsync();
+        var stoppedAt = engine.CurrentTime.Elapsed;
+        await Task.Delay(50);
+        Assert.InRange(engine.CurrentTime.Elapsed - stoppedAt, TimeSpan.Zero, TimeSpan.FromMilliseconds(10));
+    }
 }

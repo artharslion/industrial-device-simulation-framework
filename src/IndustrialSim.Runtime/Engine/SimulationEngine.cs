@@ -20,6 +20,7 @@ public sealed class SimulationEngine
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (_clock is RealTimeClock realTime) realTime.Start();
         State = EngineState.Running;
         return Task.CompletedTask;
     }
@@ -27,15 +28,22 @@ public sealed class SimulationEngine
     public Task StopAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (_clock is RealTimeClock realTime) realTime.Stop();
         State = EngineState.Stopped;
         return Task.CompletedTask;
     }
 
-    public void Pause() => State = State == EngineState.Running ? EngineState.Paused : State;
+    public void Pause()
+    {
+        if (State != EngineState.Running) return;
+        if (_clock is RealTimeClock realTime) realTime.Pause();
+        State = EngineState.Paused;
+    }
     public void Reset()
     {
         State = EngineState.Stopped;
         if (_clock is DeterministicClock deterministic) deterministic.Reset();
+        if (_clock is RealTimeClock realTime) realTime.Reset();
         lock (_gate) _callbacks.Clear();
     }
 
