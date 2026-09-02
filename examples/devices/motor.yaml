@@ -1,0 +1,58 @@
+device:
+  id: motor-001
+  type: motor
+  name: Motor 001
+  datapoints:
+    speed:
+      type: int32
+      unit: "rpm"
+      initial: 0
+      access: readwrite
+    temperature:
+      type: double
+      unit: "°C"
+      initial: 25
+      access: read
+    current:
+      type: double
+      unit: "A"
+      initial: 0
+      access: read
+    running:
+      type: boolean
+      initial: false
+      access: read
+    alarm:
+      type: boolean
+      initial: false
+      access: read
+  commands:
+    start:
+    stop:
+protocols:
+  opcua:
+    enabled: true
+    endpoint: "opc.tcp://0.0.0.0:4840"
+  modbus:
+    enabled: true
+    port: 5020
+    mappings:
+      speed:
+        holdingRegister: 100
+        type: int32
+        access: readwrite
+      temperature:
+        inputRegister: 102
+        type: double
+        access: read
+      current:
+        inputRegister: 106
+        type: double
+        access: read
+      running:
+        discreteInput: 10
+        type: boolean
+        access: read
+web:
+  enabled: true
+  port: 8080

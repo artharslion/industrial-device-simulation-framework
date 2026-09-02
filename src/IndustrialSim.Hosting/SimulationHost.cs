@@ -2,7 +2,9 @@ using System.Collections.Concurrent;
 using IndustrialSim.Configuration;
 using IndustrialSim.Configuration.Models;
 using IndustrialSim.Core.Domain;
+using IndustrialSim.Devices.Motor;
 using IndustrialSim.Devices.Pump;
+using IndustrialSim.Devices.Sensor;
 using IndustrialSim.Faults;
 using IndustrialSim.Protocols.Abstractions;
 using IndustrialSim.Protocols.Modbus;
@@ -26,7 +28,9 @@ public sealed class SimulationHost : IAsyncDisposable
     private readonly SimulationHostOptions _options;
     private CancellationTokenSource? _loopCts;
     private Task? _loopTask;
+    private Motor? _motor;
     private Pump? _pump;
+    private Sensor? _sensor;
     private TimeSpan _lastBehaviorTime;
     private bool _disposed;
 
@@ -42,6 +46,17 @@ public sealed class SimulationHost : IAsyncDisposable
             _pump = new Pump(state);
             commandHandlers["start"] = _ => { _pump.Start(Engine.CurrentTime); return Task.CompletedTask; };
             commandHandlers["stop"] = _ => { _pump.Stop(Engine.CurrentTime); return Task.CompletedTask; };
+        }
+        else if (CanAttachMotor(configuration.Device))
+        {
+            _motor = new Motor(state);
+            commandHandlers["start"] = _ => { _motor.Start(Engine.CurrentTime); return Task.CompletedTask; };
+            commandHandlers["stop"] = _ => { _motor.Stop(Engine.CurrentTime); return Task.CompletedTask; };
+        }
+        else if (CanAttachSensor(configuration.Device))
+        {
+            _sensor = new Sensor(state);
+            commandHandlers["reset"] = _ => { _sensor.Reset(Engine.CurrentTime); return Task.CompletedTask; };
         }
         Runtime = new InMemoryDeviceRuntime(configuration.Device, state, commandHandlers);
         FaultManager = new FaultManager(Engine);
@@ -165,6 +180,8 @@ public sealed class SimulationHost : IAsyncDisposable
         foreach (var point in Runtime.Definition.DataPoints)
             if (point.InitialValue is not null) State.SetInternal(new DataPointId(point.Name), point.InitialValue.Value, Engine.CurrentTime);
         if (_pump is not null) _pump = new Pump(State);
+        if (_motor is not null) _motor = new Motor(State);
+        if (_sensor is not null) _sensor = new Sensor(State);
     }
 
     public void ScheduleFault(FaultSpec fault)
@@ -360,7 +377,10 @@ public sealed class SimulationHost : IAsyncDisposable
 
     private void UpdateDeviceBehavior(TimeSpan elapsed)
     {
-        if (_pump is not null && elapsed >= TimeSpan.Zero) _pump.Update(elapsed, Engine.CurrentTime);
+        if (elapsed < TimeSpan.Zero) return;
+        _pump?.Update(elapsed, Engine.CurrentTime);
+        _motor?.Update(elapsed, Engine.CurrentTime);
+        _sensor?.Update(elapsed, Engine.CurrentTime);
     }
 
     private static bool CanAttachPump(DeviceDefinition definition)
@@ -372,5 +392,24 @@ public sealed class SimulationHost : IAsyncDisposable
             && points.TryGetValue("pressure", out var pressure) && pressure.DataType == DataType.Double
             && points.TryGetValue("running", out var running) && running.DataType == DataType.Boolean
             && points.TryGetValue("alarm", out var alarm) && alarm.DataType == DataType.Boolean;
+    }
+
+    private static bool CanAttachMotor(DeviceDefinition definition)
+    {
+        if (!definition.Type.Equals("motor", StringComparison.OrdinalIgnoreCase)) return false;
+        var points = definition.DataPoints.ToDictionary(point => point.Name, StringComparer.OrdinalIgnoreCase);
+        return points.TryGetValue("speed", out var speed) && speed.DataType == DataType.Int32
+            && points.TryGetValue("temperature", out var temperature) && temperature.DataType == DataType.Double
+            && points.TryGetValue("current", out var current) && current.DataType == DataType.Double
+            && points.TryGetValue("running", out var running) && running.DataType == DataType.Boolean
+            && points.TryGetValue("alarm", out var alarm) && alarm.DataType == DataType.Boolean;
+    }
+
+    private static bool CanAttachSensor(DeviceDefinition definition)
+    {
+        if (!definition.Type.Equals("sensor", StringComparison.OrdinalIgnoreCase)) return false;
+        var points = definition.DataPoints.ToDictionary(point => point.Name, StringComparer.OrdinalIgnoreCase);
+        return points.TryGetValue("value", out var value) && value.DataType == DataType.Double
+            && points.TryGetValue("quality", out var quality) && quality.DataType == DataType.String;
     }
 }

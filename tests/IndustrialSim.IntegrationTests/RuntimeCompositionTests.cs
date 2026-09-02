@@ -92,6 +92,36 @@ public sealed class RuntimeCompositionTests
     }
 
     [Fact]
+    public async Task Yaml_motor_start_and_tick_drive_speed_current_and_temperature()
+    {
+        var file = WriteTempBuiltInDeviceConfig("motor");
+        await using var host = await SimulationHost.LoadAsync(file, new SimulationHostOptions(Deterministic: true));
+        await host.StartAsync();
+
+        await host.Runtime.InvokeCommandAsync("start");
+        host.Tick(TimeSpan.FromSeconds(5));
+
+        Assert.True(Convert.ToInt32(host.Runtime.Read("speed")!.Value) > 0);
+        Assert.True(Convert.ToDouble(host.Runtime.Read("current")!.Value) > 0);
+        Assert.True(Convert.ToDouble(host.Runtime.Read("temperature")!.Value) > 25d);
+    }
+
+    [Fact]
+    public async Task Yaml_sensor_tick_and_reset_drive_value_and_quality()
+    {
+        var file = WriteTempBuiltInDeviceConfig("sensor");
+        await using var host = await SimulationHost.LoadAsync(file, new SimulationHostOptions(Deterministic: true));
+        await host.StartAsync();
+
+        host.Tick(TimeSpan.FromSeconds(2));
+        Assert.Equal(2d, Convert.ToDouble(host.Runtime.Read("value")!.Value));
+
+        await host.Runtime.InvokeCommandAsync("reset");
+        Assert.Equal(0d, Convert.ToDouble(host.Runtime.Read("value")!.Value));
+        Assert.Equal("Good", host.Runtime.Read("quality")!.Value);
+    }
+
+    [Fact]
     public async Task Shared_host_rejects_scenario_references_to_another_device()
     {
         var file = WriteTempConfig(null, null);
@@ -214,6 +244,41 @@ public sealed class RuntimeCompositionTests
                 start:
             {{protocols}}
             """);
+        return path;
+    }
+
+    private static string WriteTempBuiltInDeviceConfig(string type)
+    {
+        var yaml = type switch
+        {
+            "motor" => """
+                device:
+                  id: motor-001
+                  type: motor
+                  datapoints:
+                    speed: { type: int32, initial: 0, access: readwrite }
+                    temperature: { type: double, initial: 25, access: read }
+                    current: { type: double, initial: 0, access: read }
+                    running: { type: boolean, initial: false, access: read }
+                    alarm: { type: boolean, initial: false, access: read }
+                  commands:
+                    start:
+                    stop:
+                """,
+            "sensor" => """
+                device:
+                  id: sensor-001
+                  type: sensor
+                  datapoints:
+                    value: { type: double, initial: 0, access: readwrite }
+                    quality: { type: string, initial: Good, access: read }
+                  commands:
+                    reset:
+                """,
+            _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unsupported built-in device type.")
+        };
+        var path = Path.Combine(Path.GetTempPath(), $"industrial-sim-{Guid.NewGuid():N}.yaml");
+        File.WriteAllText(path, yaml);
         return path;
     }
 

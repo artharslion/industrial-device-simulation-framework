@@ -1,0 +1,30 @@
+device:
+  id: sensor-001
+  type: sensor
+  name: Sensor 001
+  datapoints:
+    value:
+      type: double
+      initial: 0
+      access: readwrite
+    quality:
+      type: string
+      initial: Good
+      access: read
+  commands:
+    reset:
+protocols:
+  opcua:
+    enabled: true
+    endpoint: "opc.tcp://0.0.0.0:4840"
+  modbus:
+    enabled: true
+    port: 5020
+    mappings:
+      value:
+        holdingRegister: 100
+        type: double
+        access: readwrite
+web:
+  enabled: true
+  port: 8080

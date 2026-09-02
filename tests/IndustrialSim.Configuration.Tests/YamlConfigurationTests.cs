@@ -76,6 +76,19 @@ protocols:
         Assert.Equal(4, loaded.ModbusMappings.Count);
     }
 
+    [Theory]
+    [InlineData("motor.yaml", "motor-001", "motor", 4)]
+    [InlineData("sensor.yaml", "sensor-001", "sensor", 1)]
+    public void Canonical_built_in_device_examples_are_loadable(string fileName, string deviceId, string deviceType, int mappingCount)
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "examples", "devices", fileName);
+        var loaded = new YamlConfigurationLoader().Load(File.ReadAllText(path));
+
+        Assert.Equal(deviceId, loaded.Device.Id.Value);
+        Assert.Equal(deviceType, loaded.Device.Type);
+        Assert.Equal(mappingCount, loaded.ModbusMappings.Count);
+    }
+
     [Fact]
     public void Validates_modbus_numeric_widths_orders_and_access_contracts()
     {
