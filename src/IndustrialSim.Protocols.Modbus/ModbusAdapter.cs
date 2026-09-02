@@ -271,7 +271,8 @@ public sealed class ModbusAdapter : IProtocolAdapter
             writes.Add((mapping, Decode(mapping, pdu.AsSpan(6 + offset, mapping.Width * 2).ToArray())));
             cursor = mapping.Address + mapping.Width;
         }
-        foreach (var write in writes) Write(write.Mapping.Name, write.Value);
+        var result = _runtime!.WriteBatch(writes.Select(write => (write.Mapping.Name, (object?)write.Value)));
+        if (!result.Succeeded) throw new ModbusRequestException(2);
         return new[] { (byte)16, pdu[1], pdu[2], pdu[3], pdu[4] };
     }
 

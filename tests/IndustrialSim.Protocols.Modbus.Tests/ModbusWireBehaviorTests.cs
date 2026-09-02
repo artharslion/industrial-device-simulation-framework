@@ -130,6 +130,38 @@ public sealed class ModbusWireBehaviorTests
     }
 
     [Fact]
+    public async Task Late_rejected_multi_register_write_is_atomic_across_datapoints()
+    {
+        var runtime = new InMemoryDeviceRuntime(new DeviceDefinition(new DeviceId("wire"), "pump", new[]
+        {
+            new DataPointDefinition("first", DataType.UInt16, DataPointAccess.ReadWrite, (ushort)1),
+            new DataPointDefinition("second", DataType.Boolean, DataPointAccess.ReadWrite, false)
+        }));
+        var adapter = new ModbusAdapter();
+        adapter.Configure(new[]
+        {
+            new ValidatedModbusMapping("first", 80, 1, "register", "uint16", "readwrite", null, null),
+            new ValidatedModbusMapping("second", 81, 1, "register", "uint16", "readwrite", null, null)
+        });
+        await adapter.StartAsync(runtime, new ProtocolOptions());
+        await adapter.StartServerAsync(0);
+        try
+        {
+            using var client = new TcpClient();
+            await client.ConnectAsync("127.0.0.1", adapter.Port);
+            var response = await RoundTripAsync(client, 1, 16, 80, 2, new byte[] { 4, 0, 2, 0, 3 });
+
+            Assert.Equal(new byte[] { 0x90, 2 }, response[7..]);
+            Assert.Equal((ushort)1, runtime.Read("first")!.Value);
+            Assert.False((bool)runtime.Read("second")!.Value);
+        }
+        finally
+        {
+            await adapter.StopAsync();
+        }
+    }
+
+    [Fact]
     public async Task Wire_honors_configured_byte_and_word_order()
     {
         var runtime = new InMemoryDeviceRuntime(new DeviceDefinition(new DeviceId("wire"), "pump", new[]

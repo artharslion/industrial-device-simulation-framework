@@ -64,4 +64,20 @@ public class StateStoreTests
         Assert.NotNull(current);
         Assert.InRange((int)current!.Value, 1, 100);
     }
+
+    [Fact]
+    public void Batch_write_validates_every_value_before_committing_any_change()
+    {
+        var store = new StateStore(Definition());
+
+        var result = store.SetBatch(new[]
+        {
+            (new DataPointId("speed"), (object?)100),
+            (new DataPointId("temperature"), (object?)30d)
+        });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(0, store.Get(new DataPointId("speed"))!.Value);
+        Assert.Equal(25d, store.Get(new DataPointId("temperature"))!.Value);
+    }
 }

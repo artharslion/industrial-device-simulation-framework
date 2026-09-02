@@ -10,6 +10,7 @@ public interface IDeviceRuntime
     StateStore State { get; }
     ScalarValue? Read(string datapoint);
     StateTransitionResult Write(string datapoint, object? value);
+    StateBatchTransitionResult WriteBatch(IEnumerable<(string DataPoint, object? Value)> updates);
     Task InvokeCommandAsync(string command, CancellationToken cancellationToken = default);
 }
 
@@ -31,6 +32,8 @@ public sealed class InMemoryDeviceRuntime : IDeviceRuntime
     public int CommandsInvoked { get; private set; }
     public ScalarValue? Read(string datapoint) => State.Get(new DataPointId(datapoint));
     public StateTransitionResult Write(string datapoint, object? value) => State.Set(new DataPointId(datapoint), value);
+    public StateBatchTransitionResult WriteBatch(IEnumerable<(string DataPoint, object? Value)> updates) =>
+        State.SetBatch(updates.Select(update => (new DataPointId(update.DataPoint), update.Value)));
     public async Task InvokeCommandAsync(string command, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

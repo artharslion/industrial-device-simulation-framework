@@ -2,6 +2,12 @@ using IndustrialSim.Core.Domain;
 
 namespace IndustrialSim.Runtime.State;
 
+public sealed record StateBatchTransitionResult(bool Succeeded, IReadOnlyList<DataPointChanged> Events, string? Error)
+{
+    public static StateBatchTransitionResult Committed(IReadOnlyList<DataPointChanged> events) => new(true, events, null);
+    public static StateBatchTransitionResult Rejected(string error) => new(false, [], error);
+}
+
 public sealed class StateStore
 {
     private readonly DeviceDefinition _definition;
@@ -47,6 +53,39 @@ public sealed class StateStore
 
     public StateTransitionResult SetInternal(DataPointId dataPointId, object? value, SimulationTime? timestamp = null)
         => SetCore(dataPointId, value, timestamp, enforceAccess: false);
+
+    public StateBatchTransitionResult SetBatch(IEnumerable<(DataPointId DataPointId, object? Value)> updates, SimulationTime? timestamp = null)
+    {
+        ArgumentNullException.ThrowIfNull(updates);
+        var requested = updates.ToArray();
+        if (requested.Length == 0) return StateBatchTransitionResult.Committed([]);
+        var duplicate = requested.GroupBy(update => update.DataPointId.Value, StringComparer.OrdinalIgnoreCase).FirstOrDefault(group => group.Count() > 1);
+        if (duplicate is not null) return StateBatchTransitionResult.Rejected($"Data point '{duplicate.Key}' appears more than once in a batch.");
+
+        List<(DataPointDefinition Point, ScalarValue Normalized, ScalarValue Exposed, ScalarValue? Previous)> prepared = [];
+        List<DataPointChanged> events = [];
+        lock (_gate)
+        {
+            foreach (var update in requested)
+            {
+                var point = _definition.DataPoints.FirstOrDefault(item => item.Name.Equals(update.DataPointId.Value, StringComparison.OrdinalIgnoreCase));
+                if (point is null) return StateBatchTransitionResult.Rejected($"Data point '{update.DataPointId.Value}' does not exist.");
+                if (point.Access == DataPointAccess.Read) return StateBatchTransitionResult.Rejected($"Data point '{point.Name}' is read-only.");
+                if (!ScalarValue.TryCreate(point.DataType, update.Value, out var normalized))
+                    return StateBatchTransitionResult.Rejected($"Value is invalid for data point '{point.Name}' of type {point.DataType}.");
+                prepared.Add((point, normalized!, ApplyValueProjections(point, normalized!), _values[point.Name]));
+            }
+
+            foreach (var update in prepared)
+            {
+                _baseValues[update.Point.Name] = update.Normalized;
+                _values[update.Point.Name] = update.Exposed;
+                if (!Equals(update.Previous, update.Exposed)) events.Add(Change(update.Point, update.Previous, update.Exposed, timestamp));
+            }
+        }
+        foreach (var changed in events) DataPointChanged?.Invoke(changed);
+        return StateBatchTransitionResult.Committed(events);
+    }
 
     public void AddValueProjection(string id, DataPointId dataPointId, Func<ScalarValue, ScalarValue> projection, SimulationTime? timestamp = null)
     {

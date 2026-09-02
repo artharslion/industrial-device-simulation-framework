@@ -111,6 +111,40 @@ protocols:
         Assert.Throws<ArgumentException>(() => ModbusMappingValidator.Validate(ConfigurationWith(new() { Register = 0, HoldingRegister = 1, Type = "uint16" })));
     }
 
+    [Theory]
+    [InlineData("missing", "uint16", "read", "unknown data point")]
+    [InlineData("speed", "uint16", "readwrite", "access")]
+    public void Rejects_modbus_mappings_that_do_not_match_the_device_contract(string mappingName, string mappingType, string mappingAccess, string expected)
+    {
+        var yaml = $$"""
+            device:
+              id: pump-001
+              type: pump
+              datapoints:
+                speed: { type: int32, initial: 0, access: read }
+            protocols:
+              modbus:
+                enabled: true
+                mappings:
+                  {{mappingName}}: { holdingRegister: 10, type: {{mappingType}}, access: {{mappingAccess}} }
+            """;
+
+        var exception = Assert.Throws<ArgumentException>(() => new YamlConfigurationLoader().Load(yaml));
+        Assert.Contains(expected, exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("protocols:\n  modbus:\n    enabled: true\n    port: 70000", "modbus")]
+    [InlineData("protocols:\n  opcua:\n    enabled: true\n    endpoint: http://localhost:4840", "OPC UA")]
+    [InlineData("web:\n  enabled: true\n  port: 0", "web")]
+    public void Rejects_invalid_enabled_host_endpoints_and_ports(string hostYaml, string expected)
+    {
+        var yaml = "device:\n  id: pump\n  type: pump\n  datapoints:\n    speed: { type: int32, initial: 0, access: readwrite }\n" + hostYaml;
+
+        var exception = Assert.Throws<ArgumentException>(() => new YamlConfigurationLoader().Load(yaml));
+        Assert.Contains(expected, exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static ModbusConfiguration ConfigurationWith(ModbusMappingConfiguration mapping) => new()
     {
         Mappings = new Dictionary<string, ModbusMappingConfiguration> { ["value"] = mapping }
