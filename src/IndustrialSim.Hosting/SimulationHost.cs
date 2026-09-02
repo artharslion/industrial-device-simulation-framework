@@ -130,16 +130,17 @@ public sealed class SimulationHost : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var scenario = new ScenarioParser().Parse(yaml);
-        ScenarioRunner?.Stop();
-        ActiveScenarioName = scenario.Name;
-        ScenarioRunner = new ScenarioRunner(
+        var runner = new ScenarioRunner(
             scenario,
             Engine,
             State,
             command: (_, command) => Runtime.InvokeCommandAsync(command).GetAwaiter().GetResult(),
             faultAction: ScheduleScenarioFault);
-        ScenarioRunner.Start();
-        return ScenarioRunner;
+        runner.Start();
+        ScenarioRunner?.Stop();
+        ActiveScenarioName = scenario.Name;
+        ScenarioRunner = runner;
+        return runner;
     }
 
     public void Tick(TimeSpan amount)

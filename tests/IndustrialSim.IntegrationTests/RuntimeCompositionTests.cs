@@ -90,6 +90,24 @@ public sealed class RuntimeCompositionTests
         Assert.True(Convert.ToInt32(host.Runtime.Read("speed")!.Value) > 0);
     }
 
+    [Fact]
+    public async Task Shared_host_rejects_scenario_references_to_another_device()
+    {
+        var file = WriteTempConfig(null, null);
+        await using var host = await SimulationHost.LoadAsync(file, new SimulationHostOptions(Deterministic: true));
+        await host.StartAsync();
+
+        Assert.Throws<ArgumentException>(() => host.RunScenario("""
+            scenario:
+              name: invalid-reference
+              steps:
+                - at: 0s
+                  set: { device: another-device, datapoint: speed, value: 10 }
+            """));
+        host.Tick(TimeSpan.Zero);
+        Assert.Equal(0, host.Runtime.Read("speed")!.Value);
+    }
+
     private static string WriteTempConfig(int? opcPort, int? modbusPort)
     {
         var protocols = opcPort.HasValue || modbusPort.HasValue

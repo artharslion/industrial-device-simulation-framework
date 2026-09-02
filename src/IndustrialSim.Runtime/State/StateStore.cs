@@ -19,6 +19,8 @@ public sealed class StateStore
 
     public event Action<DataPointChanged>? DataPointChanged;
 
+    public DeviceDefinition Definition => _definition;
+
     public ScalarValue? Get(DataPointId dataPointId)
     {
         lock (_gate)
