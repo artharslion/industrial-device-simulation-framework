@@ -61,9 +61,9 @@ public sealed class Pump
     public void Update(TimeSpan elapsed, SimulationTime? timestamp = null)
     {
         if (elapsed < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(elapsed));
-        var running = (bool?)_state.Get(new DataPointId("running"))?.Value ?? false;
-        var speed = (int?)_state.Get(new DataPointId("speed"))?.Value ?? 0;
-        var temperature = (double?)_state.Get(new DataPointId("temperature"))?.Value ?? 25d;
+        var running = (bool?)_state.GetInternal(new DataPointId("running"))?.Value ?? false;
+        var speed = (int?)_state.GetInternal(new DataPointId("speed"))?.Value ?? 0;
+        var temperature = (double?)_state.GetInternal(new DataPointId("temperature"))?.Value ?? 25d;
 
         if (running)
         {

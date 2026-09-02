@@ -21,7 +21,6 @@ public sealed class SimulationHost : IAsyncDisposable
     private readonly LoadedConfiguration _configuration;
     private readonly Dictionary<string, IProtocolAdapter> _protocols = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentQueue<object> _events = new();
-    private readonly Dictionary<string, object?> _faultPreviousValues = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DataFaultProcessor> _dataFaultProcessors = new(StringComparer.OrdinalIgnoreCase);
     private readonly DeviceFaultController _deviceFaultController;
     private readonly SimulationHostOptions _options;
@@ -168,9 +167,17 @@ public sealed class SimulationHost : IAsyncDisposable
         if (_pump is not null) _pump = new Pump(State);
     }
 
-    public void ScheduleFault(FaultSpec fault) => FaultManager.Schedule(fault);
+    public void ScheduleFault(FaultSpec fault)
+    {
+        ValidateFault(fault);
+        FaultManager.Schedule(fault);
+    }
 
-    public void ActivateFault(FaultSpec fault) => FaultManager.Activate(fault);
+    public void ActivateFault(FaultSpec fault)
+    {
+        ValidateFault(fault);
+        FaultManager.Activate(fault);
+    }
 
     public bool RecoverFault(string id) => FaultManager.Recover(id);
 
@@ -225,7 +232,7 @@ public sealed class SimulationHost : IAsyncDisposable
             FaultCategory.Data => action.DataPoint,
             _ => null
         };
-        FaultManager.Schedule(new FaultSpec(
+        ScheduleFault(new FaultSpec(
             $"scenario-{Guid.NewGuid():N}",
             category,
             string.IsNullOrWhiteSpace(action.Device) ? Runtime.Definition.Id.Value : action.Device,
@@ -248,15 +255,20 @@ public sealed class SimulationHost : IAsyncDisposable
         switch (fault.Category)
         {
             case FaultCategory.Data:
-                if (string.IsNullOrWhiteSpace(fault.Target)) throw new ArgumentException($"Data fault '{fault.Id}' requires a datapoint target.");
-                var current = State.Get(new DataPointId(fault.Target))?.Value;
-                _faultPreviousValues[fault.Id] = current;
-                if (!Enum.TryParse<DataFaultType>(fault.Type, true, out var dataType)) throw new ArgumentException($"Data fault '{fault.Id}' has unsupported type '{fault.Type}'.");
+                var dataPointId = new DataPointId(fault.Target!);
+                var current = State.Get(dataPointId)!;
+                var point = Runtime.Definition.DataPoints.Single(item => item.Name.Equals(fault.Target, StringComparison.OrdinalIgnoreCase));
+                Enum.TryParse<DataFaultType>(fault.Type, true, out var dataType);
                 var seed = fault.Metadata is not null && fault.Metadata.ContainsKey("seed") ? MetadataInt(fault, "seed") : Seed;
                 var parameter = MetadataDouble(fault, "parameter");
                 var processor = new DataFaultProcessor(seed);
                 _dataFaultProcessors[fault.Id] = processor;
-                State.SetInternal(new DataPointId(fault.Target), processor.Apply(dataType, current, parameter), Engine.CurrentTime);
+                var frozen = current.Value;
+                State.AddValueProjection(fault.Id, dataPointId, candidate =>
+                {
+                    var input = dataType is DataFaultType.Stale or DataFaultType.Freeze ? frozen : candidate.Value;
+                    return ScalarValue.Create(point.DataType, processor.Apply(dataType, input, parameter));
+                }, Engine.CurrentTime);
                 break;
             case FaultCategory.Device:
                 if (!Enum.TryParse<DeviceFaultType>(fault.Type, true, out var deviceType)) throw new ArgumentException($"Device fault '{fault.Id}' has unsupported type '{fault.Type}'.");
@@ -274,7 +286,7 @@ public sealed class SimulationHost : IAsyncDisposable
         switch (fault.Category)
         {
             case FaultCategory.Data when !string.IsNullOrWhiteSpace(fault.Target):
-                if (_faultPreviousValues.Remove(fault.Id, out var previous)) State.SetInternal(new DataPointId(fault.Target), previous, Engine.CurrentTime);
+                State.RemoveValueProjection(fault.Id, Engine.CurrentTime);
                 if (_dataFaultProcessors.Remove(fault.Id, out var processor)) processor.Recover();
                 break;
             case FaultCategory.Device:
@@ -288,6 +300,39 @@ public sealed class SimulationHost : IAsyncDisposable
 
     private static int MetadataInt(FaultSpec fault, string name) => fault.Metadata is not null && fault.Metadata.TryGetValue(name, out var value) && int.TryParse(value, out var parsed) ? parsed : 0;
     private static double MetadataDouble(FaultSpec fault, string name) => fault.Metadata is not null && fault.Metadata.TryGetValue(name, out var value) && double.TryParse(value, out var parsed) ? parsed : 0;
+
+    private void ValidateFault(FaultSpec fault)
+    {
+        ArgumentNullException.ThrowIfNull(fault);
+        if (!string.Equals(fault.Device, Runtime.Definition.Id.Value, StringComparison.OrdinalIgnoreCase)) throw new ArgumentException($"Fault device '{fault.Device}' does not match runtime device '{Runtime.Definition.Id.Value}'.");
+        switch (fault.Category)
+        {
+            case FaultCategory.Data:
+                if (string.IsNullOrWhiteSpace(fault.Target)) throw new ArgumentException($"Data fault '{fault.Id}' requires a datapoint target.");
+                if (!Runtime.Definition.DataPoints.Any(point => point.Name.Equals(fault.Target, StringComparison.OrdinalIgnoreCase))) throw new ArgumentException($"Data fault '{fault.Id}' targets unknown data point '{fault.Target}'.");
+                if (State.Get(new DataPointId(fault.Target)) is null) throw new ArgumentException($"Data fault '{fault.Id}' requires an initialized data point target.");
+                if (!Enum.TryParse<DataFaultType>(fault.Type, true, out _)) throw new ArgumentException($"Data fault '{fault.Id}' has unsupported type '{fault.Type}'.");
+                ValidateNumericMetadata<double>(fault, "parameter", double.TryParse);
+                ValidateNumericMetadata<int>(fault, "seed", int.TryParse);
+                break;
+            case FaultCategory.Device:
+                if (!Enum.TryParse<DeviceFaultType>(fault.Type, true, out var deviceType)) throw new ArgumentException($"Device fault '{fault.Id}' has unsupported type '{fault.Type}'.");
+                var requiredPoint = deviceType is DeviceFaultType.SensorFailure or DeviceFaultType.Overheat ? "alarm" : "running";
+                if (!Runtime.Definition.DataPoints.Any(point => point.Name.Equals(requiredPoint, StringComparison.OrdinalIgnoreCase))) throw new ArgumentException($"Device fault '{fault.Id}' requires data point '{requiredPoint}'.");
+                break;
+            case FaultCategory.Network:
+                if (string.IsNullOrWhiteSpace(fault.Target) || !_protocols.ContainsKey(fault.Target)) throw new ArgumentException($"Network fault '{fault.Id}' targets an unconfigured protocol '{fault.Target}'.");
+                if (!Enum.TryParse<NetworkFaultType>(fault.Type, true, out _)) throw new ArgumentException($"Network fault '{fault.Id}' has unsupported type '{fault.Type}'.");
+                break;
+        }
+    }
+
+    private static void ValidateNumericMetadata<T>(FaultSpec fault, string name, TryParse<T> tryParse)
+    {
+        if (fault.Metadata is not null && fault.Metadata.TryGetValue(name, out var value) && !tryParse(value, out _)) throw new ArgumentException($"Fault '{fault.Id}' metadata '{name}' must be numeric.");
+    }
+
+    private delegate bool TryParse<T>(string value, out T result);
 
     private void StartRealTimeLoop()
     {

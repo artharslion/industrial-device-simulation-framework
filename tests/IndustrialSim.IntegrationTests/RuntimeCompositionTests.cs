@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using IndustrialSim.Hosting;
+using IndustrialSim.Faults;
 using IndustrialSim.Protocols.Modbus;
 
 namespace IndustrialSim.IntegrationTests;
@@ -106,6 +107,63 @@ public sealed class RuntimeCompositionTests
             """));
         host.Tick(TimeSpan.Zero);
         Assert.Equal(0, host.Runtime.Read("speed")!.Value);
+    }
+
+    [Fact]
+    public async Task Invalid_fault_does_not_enter_the_active_lifecycle()
+    {
+        var file = WriteTempConfig(null, null);
+        await using var host = await SimulationHost.LoadAsync(file, new SimulationHostOptions(Deterministic: true));
+        await host.StartAsync();
+        var fault = new FaultSpec(
+            "invalid-data-fault",
+            FaultCategory.Data,
+            host.Runtime.Definition.Id.Value,
+            "missing",
+            host.Engine.CurrentTime.Elapsed,
+            Type: "stale");
+
+        Assert.Throws<ArgumentException>(() => host.ActivateFault(fault));
+        Assert.Empty(host.FaultManager.ActiveFaults);
+    }
+
+    [Fact]
+    public async Task Stale_fault_remains_active_across_behavior_ticks_and_recovery_keeps_latest_state()
+    {
+        var file = WriteTempConfig(null, null);
+        await using var host = await SimulationHost.LoadAsync(file, new SimulationHostOptions(Deterministic: true));
+        await host.StartAsync();
+        await host.Runtime.InvokeCommandAsync("start");
+        host.Tick(TimeSpan.FromSeconds(1));
+        var frozen = Convert.ToDouble(host.Runtime.Read("temperature")!.Value);
+        var stale = new FaultSpec(
+            "stale-temperature",
+            FaultCategory.Data,
+            host.Runtime.Definition.Id.Value,
+            "temperature",
+            host.Engine.CurrentTime.Elapsed,
+            Type: "stale");
+
+        host.ActivateFault(stale);
+        host.Tick(TimeSpan.FromSeconds(2));
+        Assert.Equal(frozen, Convert.ToDouble(host.Runtime.Read("temperature")!.Value));
+        Assert.True(host.RecoverFault(stale.Id));
+        Assert.True(Convert.ToDouble(host.Runtime.Read("temperature")!.Value) > frozen);
+        host.Tick(TimeSpan.FromSeconds(1));
+        Assert.True(Convert.ToDouble(host.Runtime.Read("temperature")!.Value) > frozen);
+
+        var spike = new FaultSpec(
+            "speed-spike",
+            FaultCategory.Data,
+            host.Runtime.Definition.Id.Value,
+            "speed",
+            host.Engine.CurrentTime.Elapsed,
+            Type: "spike",
+            Metadata: new Dictionary<string, string> { ["parameter"] = "25" });
+        host.ActivateFault(spike);
+        host.State.SetInternal(new("speed"), 500, host.Engine.CurrentTime);
+        Assert.True(host.RecoverFault(spike.Id));
+        Assert.Equal(500, host.Runtime.Read("speed")!.Value);
     }
 
     private static string WriteTempConfig(int? opcPort, int? modbusPort)
