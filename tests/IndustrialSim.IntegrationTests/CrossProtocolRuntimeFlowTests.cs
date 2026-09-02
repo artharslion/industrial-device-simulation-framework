@@ -74,11 +74,12 @@ public sealed class CrossProtocolRuntimeFlowTests
         var networkFault = new FaultSpec("network-disconnect", FaultCategory.Network, "cross", "modbus", host.Engine.CurrentTime.Elapsed, Type: "disconnect");
         host.ScheduleFault(networkFault);
         host.Tick(TimeSpan.Zero);
-        var faultResponse = await ModbusRoundTripAsync(modbus, 5, 3, 100, 2);
-        Assert.Equal(new byte[] { 0x83, 6 }, faultResponse[7..]);
+        await Assert.ThrowsAnyAsync<IOException>(() => ModbusRoundTripAsync(modbus, 5, 3, 100, 2));
         host.Tick(TimeSpan.FromSeconds(1));
         Assert.True(host.RecoverFault(networkFault.Id));
-        Assert.Equal(300, await ReadModbusInt32Async(modbus, 6, 100));
+        using var recoveredModbus = new TcpClient();
+        await recoveredModbus.ConnectAsync(IPAddress.Loopback, modbusPort);
+        Assert.Equal(300, await ReadModbusInt32Async(recoveredModbus, 6, 100));
 
         var events = await http.GetStringAsync("/api/events");
         Assert.Contains("data-spike", events, StringComparison.Ordinal);

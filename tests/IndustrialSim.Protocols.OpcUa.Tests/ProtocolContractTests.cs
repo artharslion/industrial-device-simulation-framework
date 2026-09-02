@@ -3,6 +3,7 @@ using IndustrialSim.Protocols.Abstractions;
 using IndustrialSim.Protocols.OpcUa;
 using Opc.Ua;
 using Opc.Ua.Client;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 
@@ -66,6 +67,67 @@ public class ProtocolContractTests
         using var probe = new TcpListener(IPAddress.Loopback, port);
         probe.Start();
         probe.Stop();
+    }
+
+    [Fact]
+    public async Task Wire_network_faults_affect_opcua_services_and_recovery_exposes_latest_runtime_state()
+    {
+        var runtime = new InMemoryDeviceRuntime(new DeviceDefinition(new DeviceId("sensor-001"), "sensor",
+            new[] { new DataPointDefinition("value", DataType.Int32, DataPointAccess.ReadWrite, 1) }));
+        var adapter = new OpcUaAdapter();
+        var port = GetFreePort();
+        await adapter.StartAsync(runtime, new ProtocolOptions($"opc.tcp://127.0.0.1:{port}", port));
+        var config = await CreateClientConfigurationAsync();
+        using var session = await CreateSessionAsync(config, port);
+        var node = new NodeId("sensor-001/value", 2);
+
+        adapter.ApplyTransportFault("latency", TimeSpan.FromMilliseconds(150));
+        var stopwatch = Stopwatch.StartNew();
+        Assert.Equal(1, Convert.ToInt32((await session.ReadValueAsync(node)).Value));
+        Assert.True(stopwatch.Elapsed >= TimeSpan.FromMilliseconds(100));
+
+        adapter.ApplyTransportFault("timeout", TimeSpan.FromMilliseconds(150));
+        var timedOut = await Assert.ThrowsAsync<ServiceResultException>(() => session.ReadValueAsync(node));
+        Assert.Equal(StatusCodes.BadTimeout, timedOut.StatusCode);
+
+        adapter.ApplyTransportFault("disconnect", TimeSpan.Zero);
+        await Assert.ThrowsAnyAsync<Exception>(() => session.ReadValueAsync(node));
+        Assert.True(runtime.Write("value", 9).Succeeded);
+
+        adapter.RecoverTransportFault();
+        using var recovered = await CreateSessionAsync(config, port);
+        Assert.Equal(9, Convert.ToInt32((await recovered.ReadValueAsync(node)).Value));
+        Assert.True(adapter.IsRunning);
+        await adapter.StopAsync();
+    }
+
+    private static async Task<ApplicationConfiguration> CreateClientConfigurationAsync()
+    {
+        var trust = Path.Combine(Path.GetTempPath(), "industrial-sim-opcua", "client-trust");
+        Directory.CreateDirectory(trust);
+        var config = new ApplicationConfiguration
+        {
+            ApplicationName = "IndustrialSimNetworkFaultTest",
+            ApplicationType = ApplicationType.Client,
+            SecurityConfiguration = new SecurityConfiguration
+            {
+                ApplicationCertificate = new CertificateIdentifier(),
+                TrustedIssuerCertificates = new CertificateTrustList { StoreType = "Directory", StorePath = trust },
+                TrustedPeerCertificates = new CertificateTrustList { StoreType = "Directory", StorePath = trust },
+                RejectedCertificateStore = new CertificateTrustList { StoreType = "Directory", StorePath = trust },
+                AutoAcceptUntrustedCertificates = true
+            },
+            TransportQuotas = new TransportQuotas { OperationTimeout = 1000 },
+            ClientConfiguration = new ClientConfiguration { DefaultSessionTimeout = 1000 }
+        };
+        await config.ValidateAsync(ApplicationType.Client);
+        return config;
+    }
+
+    private static async Task<ISession> CreateSessionAsync(ApplicationConfiguration config, int port)
+    {
+        var endpoint = await CoreClientUtils.SelectEndpointAsync(config, $"opc.tcp://127.0.0.1:{port}", false, null!, CancellationToken.None);
+        return await new DefaultSessionFactory(null!).CreateAsync(config, new ConfiguredEndpoint(null, endpoint, EndpointConfiguration.Create(config)), false, "network-fault-test", 1000, new UserIdentity(new AnonymousIdentityToken()), null, CancellationToken.None);
     }
 
     private static int GetFreePort()

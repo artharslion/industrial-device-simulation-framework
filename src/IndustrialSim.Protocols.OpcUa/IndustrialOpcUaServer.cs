@@ -9,14 +9,19 @@ namespace IndustrialSim.Protocols.OpcUa;
 internal sealed class IndustrialOpcUaServer : StandardServer
 {
     private readonly IDeviceRuntime _runtime;
+    private readonly OpcUaTransportFaultController _transportFault;
 
-    public IndustrialOpcUaServer(IDeviceRuntime runtime) => _runtime = runtime;
+    public IndustrialOpcUaServer(IDeviceRuntime runtime, OpcUaTransportFaultController transportFault)
+    {
+        _runtime = runtime;
+        _transportFault = transportFault;
+    }
 
     protected override MasterNodeManager CreateMasterNodeManager(IServerInternal server, ApplicationConfiguration configuration)
     {
         return new MasterNodeManager(server, configuration, null, new INodeManager[]
         {
-            new IndustrialNodeManager(server, configuration, _runtime)
+            new IndustrialNodeManager(server, configuration, _runtime, _transportFault)
         });
     }
 }
@@ -25,12 +30,14 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
 {
     private const string NamespaceUri = "urn:industrial-sim:runtime";
     private readonly IDeviceRuntime _runtime;
+    private readonly OpcUaTransportFaultController _transportFault;
     private readonly Dictionary<string, BaseDataVariableState> _variables = new(StringComparer.OrdinalIgnoreCase);
 
-    public IndustrialNodeManager(IServerInternal server, ApplicationConfiguration configuration, IDeviceRuntime runtime)
+    public IndustrialNodeManager(IServerInternal server, ApplicationConfiguration configuration, IDeviceRuntime runtime, OpcUaTransportFaultController transportFault)
         : base(server, configuration, NamespaceUri)
     {
         _runtime = runtime;
+        _transportFault = transportFault;
         _runtime.State.DataPointChanged += OnDataPointChanged;
     }
 
@@ -88,6 +95,8 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
                 UserExecutable = true,
                 OnCallMethod = (_, _, _, _) =>
                 {
+                    var transport = _transportFault.BeforeService();
+                    if (StatusCode.IsBad(transport.StatusCode)) return transport;
                     _runtime.InvokeCommandAsync(command.Name).GetAwaiter().GetResult();
                     return ServiceResult.Good;
                 }
@@ -109,6 +118,8 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
 
     private ServiceResult ReadValue(ISystemContext context, NodeState node, NumericRange indexRange, QualifiedName dataEncoding, ref object value, ref StatusCode statusCode, ref DateTime timestamp)
     {
+        var transport = _transportFault.BeforeService();
+        if (StatusCode.IsBad(transport.StatusCode)) return transport;
         var point = NodeName(node);
         value = _runtime.Read(point)?.Value!;
         statusCode = StatusCodes.Good; timestamp = DateTime.UtcNow;
@@ -117,6 +128,8 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
 
     private ServiceResult WriteValue(ISystemContext context, NodeState node, NumericRange indexRange, QualifiedName dataEncoding, ref object value, ref StatusCode statusCode, ref DateTime timestamp)
     {
+        var transport = _transportFault.BeforeService();
+        if (StatusCode.IsBad(transport.StatusCode)) return transport;
         var result = _runtime.Write(NodeName(node), value);
         return result.Succeeded ? ServiceResult.Good : StatusCodes.BadNotWritable;
     }
@@ -154,4 +167,44 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
         DataType.String => DataTypeIds.String,
         _ => DataTypeIds.BaseDataType
     };
+}
+
+internal enum OpcUaTransportFaultMode { None, Disconnect, Timeout, Latency }
+
+internal sealed class OpcUaTransportFaultController
+{
+    private readonly object _gate = new();
+    private OpcUaTransportFaultMode _mode;
+    private TimeSpan _duration;
+
+    public OpcUaTransportFaultMode Mode { get { lock (_gate) return _mode; } }
+
+    public void Apply(string fault, TimeSpan duration)
+    {
+        if (duration < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(duration));
+        var mode = fault.ToLowerInvariant() switch
+        {
+            "disconnect" => OpcUaTransportFaultMode.Disconnect,
+            "timeout" => OpcUaTransportFaultMode.Timeout,
+            "latency" => OpcUaTransportFaultMode.Latency,
+            _ => throw new ArgumentException($"Unsupported OPC UA transport fault '{fault}'.", nameof(fault))
+        };
+        lock (_gate) { _mode = mode; _duration = duration; }
+    }
+
+    public void Recover() { lock (_gate) { _mode = OpcUaTransportFaultMode.None; _duration = TimeSpan.Zero; } }
+
+    public ServiceResult BeforeService()
+    {
+        OpcUaTransportFaultMode mode;
+        TimeSpan duration;
+        lock (_gate) { mode = _mode; duration = _duration; }
+        if ((mode is OpcUaTransportFaultMode.Timeout or OpcUaTransportFaultMode.Latency) && duration > TimeSpan.Zero) Thread.Sleep(duration);
+        return mode switch
+        {
+            OpcUaTransportFaultMode.Disconnect => StatusCodes.BadNotConnected,
+            OpcUaTransportFaultMode.Timeout => StatusCodes.BadTimeout,
+            _ => ServiceResult.Good
+        };
+    }
 }

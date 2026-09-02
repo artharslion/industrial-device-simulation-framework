@@ -9,6 +9,7 @@ public sealed class OpcUaAdapter : IProtocolAdapter
 {
     private IDeviceRuntime? _runtime;
     private ApplicationInstance? _application;
+    private readonly OpcUaTransportFaultController _transportFault = new();
     public string Name => "opcua";
     public bool IsRunning { get; private set; }
     public bool IsDisconnected { get; private set; }
@@ -18,8 +19,22 @@ public sealed class OpcUaAdapter : IProtocolAdapter
     public bool IsStandardOpcUaServer => _application?.Server is IndustrialOpcUaServer && IsRunning;
     public event Action<DataPointChanged>? DataPointChanged;
     public IReadOnlyCollection<string> Nodes => _runtime is null ? [] : _runtime.Definition.DataPoints.Select(p => $"{_runtime.Definition.Id.Value}/{p.Name}").Concat(_runtime.Definition.Commands.Select(c => $"{_runtime.Definition.Id.Value}/{c.Name}")).ToArray();
-    public void ApplyTransportFault(string fault, TimeSpan duration) { IsDisconnected = fault.Equals("disconnect", StringComparison.OrdinalIgnoreCase) || fault.Equals("timeout", StringComparison.OrdinalIgnoreCase); Latency = fault.Equals("latency", StringComparison.OrdinalIgnoreCase) ? duration : TimeSpan.Zero; }
-    public void RecoverTransportFault() { IsDisconnected = false; Latency = TimeSpan.Zero; }
+    public void ApplyTransportFault(string fault, TimeSpan duration)
+    {
+        _transportFault.Apply(fault, duration);
+        IsDisconnected = _transportFault.Mode is OpcUaTransportFaultMode.Disconnect or OpcUaTransportFaultMode.Timeout;
+        Latency = _transportFault.Mode == OpcUaTransportFaultMode.Latency ? duration : TimeSpan.Zero;
+        if (_transportFault.Mode == OpcUaTransportFaultMode.Disconnect) StopWireServerAsync().GetAwaiter().GetResult();
+    }
+
+    public void RecoverTransportFault()
+    {
+        var restart = _transportFault.Mode == OpcUaTransportFaultMode.Disconnect && IsRunning && _application is null && Port > 0;
+        _transportFault.Recover();
+        IsDisconnected = false;
+        Latency = TimeSpan.Zero;
+        if (restart) StartServerAsync(Port).GetAwaiter().GetResult();
+    }
     public async Task StartAsync(IDeviceRuntime runtime, ProtocolOptions options, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested(); _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime)); Endpoint = options.Endpoint ?? Endpoint;
@@ -28,7 +43,7 @@ public sealed class OpcUaAdapter : IProtocolAdapter
     }
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested(); if (_application is not null) await _application.StopAsync();
+        cancellationToken.ThrowIfCancellationRequested(); await StopWireServerAsync();
         if (_runtime is not null) _runtime.State.DataPointChanged -= OnDataPointChanged;
         _application = null; _runtime = null; IsRunning = false; Port = 0;
     }
@@ -43,7 +58,7 @@ public sealed class OpcUaAdapter : IProtocolAdapter
             ServerConfiguration = new ServerConfiguration { BaseAddresses = new StringCollection { Endpoint }, SecurityPolicies = new ServerSecurityPolicyCollection { new ServerSecurityPolicy { SecurityMode = MessageSecurityMode.None, SecurityPolicyUri = SecurityPolicies.None } } },
             SecurityConfiguration = new SecurityConfiguration { ApplicationCertificate = new CertificateIdentifier { StoreType = "Directory", StorePath = certificatePath, SubjectName = "CN=IndustrialSim" }, TrustedIssuerCertificates = new CertificateTrustList { StoreType = "Directory", StorePath = trustPath }, TrustedPeerCertificates = new CertificateTrustList { StoreType = "Directory", StorePath = trustPath }, RejectedCertificateStore = new CertificateTrustList { StoreType = "Directory", StorePath = trustPath }, AutoAcceptUntrustedCertificates = true }, TransportQuotas = new TransportQuotas(), TraceConfiguration = new TraceConfiguration() };
         await config.ValidateAsync(ApplicationType.Server, cancellationToken); _application = new ApplicationInstance(config, null!);
-        await _application.CheckApplicationInstanceCertificatesAsync(true, 2048, cancellationToken); await _application.StartAsync(new IndustrialOpcUaServer(_runtime!));
+        await _application.CheckApplicationInstanceCertificatesAsync(true, 2048, cancellationToken); await _application.StartAsync(new IndustrialOpcUaServer(_runtime!, _transportFault));
     }
     public object? Read(string node) { EnsureTransport(); Ensure(); if (Latency > TimeSpan.Zero) Thread.Sleep(Latency); return _runtime!.Read(NodeName(node))?.Value; }
     public void Write(string node, object? value) { EnsureTransport(); Ensure(); var result = _runtime!.Write(NodeName(node), value); if (!result.Succeeded) throw new InvalidOperationException(result.Error); }
@@ -52,4 +67,11 @@ public sealed class OpcUaAdapter : IProtocolAdapter
     private void Ensure() { if (!IsRunning || _runtime is null) throw new InvalidOperationException("OPC UA adapter is not running."); }
     private void EnsureTransport() { if (IsDisconnected) throw new IOException("OPC UA transport disconnected."); }
     private void OnDataPointChanged(DataPointChanged change) => DataPointChanged?.Invoke(change);
+
+    private async Task StopWireServerAsync()
+    {
+        var application = _application;
+        _application = null;
+        if (application is not null) await application.StopAsync();
+    }
 }

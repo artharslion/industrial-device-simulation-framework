@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Net.Sockets;
 using IndustrialSim.Configuration.Models;
 using IndustrialSim.Core.Domain;
@@ -213,7 +214,46 @@ public sealed class ModbusWireBehaviorTests
         }
     }
 
-    private static async Task<byte[]> RoundTripAsync(TcpClient client, ushort transaction, byte function, ushort address, ushort quantity, byte[]? writePayload = null)
+    [Fact]
+    public async Task Wire_network_faults_distinguish_latency_timeout_and_disconnect()
+    {
+        var runtime = new InMemoryDeviceRuntime(new DeviceDefinition(new DeviceId("wire"), "sensor", new[]
+        {
+            new DataPointDefinition("value", DataType.UInt16, DataPointAccess.Read, (ushort)7)
+        }));
+        var adapter = new ModbusAdapter();
+        adapter.Configure(new[] { new ValidatedModbusMapping("value", 10, 1, "register", "uint16", "read", null, null) });
+        await adapter.StartAsync(runtime, new ProtocolOptions());
+        await adapter.StartServerAsync(0);
+        try
+        {
+            using var client = new TcpClient();
+            await client.ConnectAsync("127.0.0.1", adapter.Port);
+
+            adapter.ApplyTransportFault("latency", TimeSpan.FromMilliseconds(150));
+            var stopwatch = Stopwatch.StartNew();
+            var delayed = await RoundTripAsync(client, 1, 3, 10, 1);
+            Assert.True(stopwatch.Elapsed >= TimeSpan.FromMilliseconds(100));
+            Assert.Equal(new byte[] { 3, 2, 0, 7 }, delayed[7..]);
+
+            adapter.ApplyTransportFault("timeout", TimeSpan.FromMilliseconds(250));
+            using (var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(100)))
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => RoundTripAsync(client, 2, 3, 10, 1, cancellationToken: timeout.Token));
+
+            adapter.RecoverTransportFault();
+            Assert.Equal(new byte[] { 3, 2, 0, 7 }, (await RoundTripAsync(client, 3, 3, 10, 1))[7..]);
+
+            adapter.ApplyTransportFault("disconnect", TimeSpan.Zero);
+            await Assert.ThrowsAnyAsync<IOException>(() => RoundTripAsync(client, 4, 3, 10, 1));
+            Assert.Equal((ushort)7, runtime.Read("value")!.Value);
+        }
+        finally
+        {
+            await adapter.StopAsync();
+        }
+    }
+
+    private static async Task<byte[]> RoundTripAsync(TcpClient client, ushort transaction, byte function, ushort address, ushort quantity, byte[]? writePayload = null, CancellationToken cancellationToken = default)
     {
         var pdu = new List<byte> { function, (byte)(address >> 8), (byte)address, (byte)(quantity >> 8), (byte)quantity };
         if (writePayload is not null) pdu.AddRange(writePayload);
@@ -223,21 +263,21 @@ public sealed class ModbusWireBehaviorTests
         BinaryPrimitives.WriteUInt16BigEndian(request.AsSpan(4, 2), (ushort)(pdu.Count + 1));
         request[6] = 1;
         pdu.CopyTo(request, 7);
-        await client.GetStream().WriteAsync(request);
+        await client.GetStream().WriteAsync(request, cancellationToken);
         var header = new byte[7];
-        await ReadExactlyAsync(client.GetStream(), header);
+        await ReadExactlyAsync(client.GetStream(), header, cancellationToken);
         var length = BinaryPrimitives.ReadUInt16BigEndian(header.AsSpan(4, 2));
         var body = new byte[length - 1];
-        await ReadExactlyAsync(client.GetStream(), body);
+        await ReadExactlyAsync(client.GetStream(), body, cancellationToken);
         return header.Concat(body).ToArray();
     }
 
-    private static async Task ReadExactlyAsync(NetworkStream stream, byte[] buffer)
+    private static async Task ReadExactlyAsync(NetworkStream stream, byte[] buffer, CancellationToken cancellationToken)
     {
         var offset = 0;
         while (offset < buffer.Length)
         {
-            var read = await stream.ReadAsync(buffer.AsMemory(offset));
+            var read = await stream.ReadAsync(buffer.AsMemory(offset), cancellationToken);
             if (read == 0) throw new EndOfStreamException();
             offset += read;
         }

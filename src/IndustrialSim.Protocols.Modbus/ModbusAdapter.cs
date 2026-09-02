@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using IndustrialSim.Configuration.Models;
@@ -12,6 +13,10 @@ public sealed class ModbusAdapter : IProtocolAdapter
     private IReadOnlyDictionary<string, ValidatedModbusMapping> _mappings = new Dictionary<string, ValidatedModbusMapping>(StringComparer.OrdinalIgnoreCase);
     private TcpListener? _listener;
     private CancellationTokenSource? _serverCts;
+    private readonly ConcurrentDictionary<TcpClient, byte> _clients = new();
+    private readonly object _faultGate = new();
+    private TransportFaultMode _faultMode;
+    private TimeSpan _faultDuration;
 
     public string Name => "modbus";
     public bool IsRunning { get; private set; }
@@ -21,11 +26,34 @@ public sealed class ModbusAdapter : IProtocolAdapter
 
     public void ApplyTransportFault(string fault, TimeSpan duration)
     {
-        IsDisconnected = fault.Equals("disconnect", StringComparison.OrdinalIgnoreCase) || fault.Equals("timeout", StringComparison.OrdinalIgnoreCase);
-        Latency = fault.Equals("latency", StringComparison.OrdinalIgnoreCase) ? duration : TimeSpan.Zero;
+        if (duration < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(duration));
+        var mode = fault.ToLowerInvariant() switch
+        {
+            "disconnect" => TransportFaultMode.Disconnect,
+            "timeout" => TransportFaultMode.Timeout,
+            "latency" => TransportFaultMode.Latency,
+            _ => throw new ArgumentException($"Unsupported Modbus transport fault '{fault}'.", nameof(fault))
+        };
+        lock (_faultGate)
+        {
+            _faultMode = mode;
+            _faultDuration = duration;
+            IsDisconnected = mode is TransportFaultMode.Disconnect or TransportFaultMode.Timeout;
+            Latency = mode == TransportFaultMode.Latency ? duration : TimeSpan.Zero;
+        }
+        if (mode == TransportFaultMode.Disconnect) CloseClients();
     }
 
-    public void RecoverTransportFault() { IsDisconnected = false; Latency = TimeSpan.Zero; }
+    public void RecoverTransportFault()
+    {
+        lock (_faultGate)
+        {
+            _faultMode = TransportFaultMode.None;
+            _faultDuration = TimeSpan.Zero;
+            IsDisconnected = false;
+            Latency = TimeSpan.Zero;
+        }
+    }
 
     public async Task StartAsync(IDeviceRuntime runtime, ProtocolOptions options, CancellationToken cancellationToken = default)
     {
@@ -40,6 +68,7 @@ public sealed class ModbusAdapter : IProtocolAdapter
         cancellationToken.ThrowIfCancellationRequested();
         _serverCts?.Cancel();
         _listener?.Stop();
+        CloseClients();
         _listener = null;
         _serverCts?.Dispose();
         _serverCts = null;
@@ -115,12 +144,14 @@ public sealed class ModbusAdapter : IProtocolAdapter
             catch (OperationCanceledException) { break; }
             catch (ObjectDisposedException) { break; }
             catch (SocketException) { break; }
+            if (CurrentFault().Mode == TransportFaultMode.Disconnect) { client.Dispose(); continue; }
             _ = HandleClientAsync(client, token);
         }
     }
 
     private async Task HandleClientAsync(TcpClient client, CancellationToken token)
     {
+        _clients.TryAdd(client, 0);
         using (client)
         {
             var stream = client.GetStream();
@@ -134,13 +165,21 @@ public sealed class ModbusAdapter : IProtocolAdapter
                     if (length < 2 || length > 254) throw new ModbusRequestException(3);
                     var pdu = new byte[length - 1];
                     await ReadExactlyAsync(stream, pdu, token);
-                    if (Latency > TimeSpan.Zero) await Task.Delay(Latency, token);
+                    var fault = CurrentFault();
+                    if (fault.Mode == TransportFaultMode.Disconnect) return;
+                    if (fault.Mode == TransportFaultMode.Timeout)
+                    {
+                        if (fault.Duration > TimeSpan.Zero) await Task.Delay(fault.Duration, token);
+                        continue;
+                    }
+                    if (fault.Mode == TransportFaultMode.Latency && fault.Duration > TimeSpan.Zero) await Task.Delay(fault.Duration, token);
                     await WriteResponseAsync(stream, header, ProcessRequest(pdu), token);
                 }
             }
             catch (EndOfStreamException) { }
             catch (OperationCanceledException) { }
             catch (IOException) { }
+            finally { _clients.TryRemove(client, out _); }
         }
     }
 
@@ -313,7 +352,7 @@ public sealed class ModbusAdapter : IProtocolAdapter
     private static ushort ReadUInt16(byte[] bytes, int offset) => BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(offset, 2));
     private static void RequireLength(byte[] pdu, int length) { if (pdu.Length < length) throw new ModbusRequestException(3); }
     private void EnsureRunning() { if (!IsRunning || _runtime is null) throw new InvalidOperationException("Modbus adapter is not running."); }
-    private void EnsureTransport() { if (IsDisconnected) throw new ModbusRequestException(6); }
+    private void EnsureTransport() { if (CurrentFault().Mode is TransportFaultMode.Disconnect or TransportFaultMode.Timeout) throw new ModbusRequestException(6); }
     private static bool CanRead(ValidatedModbusMapping mapping) => string.IsNullOrWhiteSpace(mapping.Access) || !mapping.Access.Equals("write", StringComparison.OrdinalIgnoreCase);
     private static bool CanWrite(ValidatedModbusMapping mapping) => mapping.Kind is "coil" or "register" && (string.IsNullOrWhiteSpace(mapping.Access) || mapping.Access.Equals("write", StringComparison.OrdinalIgnoreCase) || mapping.Access.Equals("readwrite", StringComparison.OrdinalIgnoreCase));
 
@@ -329,4 +368,19 @@ public sealed class ModbusAdapter : IProtocolAdapter
     }
 
     private sealed class ModbusRequestException(byte code) : Exception { public byte Code { get; } = code; }
+    private enum TransportFaultMode { None, Disconnect, Timeout, Latency }
+
+    private (TransportFaultMode Mode, TimeSpan Duration) CurrentFault()
+    {
+        lock (_faultGate) return (_faultMode, _faultDuration);
+    }
+
+    private void CloseClients()
+    {
+        foreach (var client in _clients.Keys)
+        {
+            try { client.Close(); }
+            catch (SocketException) { }
+        }
+    }
 }
