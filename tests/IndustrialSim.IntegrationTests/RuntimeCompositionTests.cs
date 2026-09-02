@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using IndustrialSim.Hosting;
 using IndustrialSim.Faults;
+using IndustrialSim.Core.Domain;
 using IndustrialSim.Protocols.Modbus;
 
 namespace IndustrialSim.IntegrationTests;
@@ -194,6 +195,26 @@ public sealed class RuntimeCompositionTests
         host.State.SetInternal(new("speed"), 500, host.Engine.CurrentTime);
         Assert.True(host.RecoverFault(spike.Id));
         Assert.Equal(500, host.Runtime.Read("speed")!.Value);
+    }
+
+    [Fact]
+    public async Task Host_publishes_device_and_command_runtime_events_in_lifecycle_order()
+    {
+        var file = WriteTempConfig(null, null);
+        await using var host = await SimulationHost.LoadAsync(file, new SimulationHostOptions(Deterministic: true));
+
+        await host.StartAsync();
+        await host.Runtime.InvokeCommandAsync("start");
+        await host.StopAsync();
+
+        var lifecycle = host.Events.OfType<RuntimeEvent>()
+            .Where(@event => @event is DeviceStarted or CommandExecuted or DeviceStopped)
+            .ToArray();
+        Assert.Collection(lifecycle,
+            @event => Assert.IsType<DeviceStarted>(@event),
+            @event => Assert.Equal("start", Assert.IsType<CommandExecuted>(@event).CommandName),
+            @event => Assert.IsType<DeviceStopped>(@event));
+        Assert.All(lifecycle, @event => Assert.Equal(host.Runtime.Definition.Id, @event.DeviceId));
     }
 
     private static string WriteTempConfig(int? opcPort, int? modbusPort)

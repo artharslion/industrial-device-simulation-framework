@@ -33,7 +33,10 @@ public sealed class StateStore
     public ScalarValue? Get(DataPointId dataPointId)
     {
         lock (_gate)
-            return _values.TryGetValue(dataPointId.Value, out var value) ? value : null;
+        {
+            var point = _definition.DataPoints.FirstOrDefault(item => item.Name.Equals(dataPointId.Value, StringComparison.OrdinalIgnoreCase));
+            return point is null || point.Access == DataPointAccess.Write ? null : _values[point.Name];
+        }
     }
 
     public ScalarValue? GetInternal(DataPointId dataPointId)
@@ -42,10 +45,17 @@ public sealed class StateStore
             return _baseValues.TryGetValue(dataPointId.Value, out var value) ? value : null;
     }
 
+    public ScalarValue? GetExposedInternal(DataPointId dataPointId)
+    {
+        lock (_gate)
+            return _values.TryGetValue(dataPointId.Value, out var value) ? value : null;
+    }
+
     public IReadOnlyDictionary<string, ScalarValue?> Snapshot()
     {
         lock (_gate)
-            return new Dictionary<string, ScalarValue?>(_values, StringComparer.OrdinalIgnoreCase);
+            return _definition.DataPoints.Where(point => point.Access != DataPointAccess.Write)
+                .ToDictionary(point => point.Name, point => _values[point.Name], StringComparer.OrdinalIgnoreCase);
     }
 
     public StateTransitionResult Set(DataPointId dataPointId, object? value, SimulationTime? timestamp = null)
@@ -82,8 +92,8 @@ public sealed class StateStore
                 _values[update.Point.Name] = update.Exposed;
                 if (!Equals(update.Previous, update.Exposed)) events.Add(Change(update.Point, update.Previous, update.Exposed, timestamp));
             }
+            foreach (var changed in events) DataPointChanged?.Invoke(changed);
         }
-        foreach (var changed in events) DataPointChanged?.Invoke(changed);
         return StateBatchTransitionResult.Committed(events);
     }
 
@@ -91,7 +101,6 @@ public sealed class StateStore
     {
         if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Projection id cannot be blank.", nameof(id));
         ArgumentNullException.ThrowIfNull(projection);
-        DataPointChanged? changedEvent = null;
         lock (_gate)
         {
             var point = FindPoint(dataPointId);
@@ -102,15 +111,13 @@ public sealed class StateStore
             {
                 var exposed = ApplyValueProjections(point, baseValue);
                 _values[point.Name] = exposed;
-                if (!Equals(previous, exposed)) changedEvent = Change(point, previous, exposed, timestamp);
+                if (!Equals(previous, exposed)) DataPointChanged?.Invoke(Change(point, previous, exposed, timestamp));
             }
         }
-        if (changedEvent is not null) DataPointChanged?.Invoke(changedEvent);
     }
 
     public bool RemoveValueProjection(string id, SimulationTime? timestamp = null)
     {
-        DataPointChanged? changedEvent = null;
         lock (_gate)
         {
             if (!_valueProjections.Remove(id, out var removed)) return false;
@@ -120,18 +127,14 @@ public sealed class StateStore
             {
                 var exposed = ApplyValueProjections(point, baseValue);
                 _values[point.Name] = exposed;
-                if (!Equals(previous, exposed)) changedEvent = Change(point, previous, exposed, timestamp);
+                if (!Equals(previous, exposed)) DataPointChanged?.Invoke(Change(point, previous, exposed, timestamp));
             }
         }
-        if (changedEvent is not null) DataPointChanged?.Invoke(changedEvent);
         return true;
     }
 
     private StateTransitionResult SetCore(DataPointId dataPointId, object? value, SimulationTime? timestamp, bool enforceAccess)
     {
-        DataPointChanged? changedEvent = null;
-        StateTransitionResult result;
-
         lock (_gate)
         {
             var point = _definition.DataPoints.FirstOrDefault(item => string.Equals(item.Name, dataPointId.Value, StringComparison.OrdinalIgnoreCase));
@@ -147,12 +150,11 @@ public sealed class StateStore
             _values[point.Name] = exposed;
             if (Equals(previous, exposed)) return StateTransitionResult.Unchanged(exposed);
 
-            changedEvent = Change(point, previous, exposed, timestamp);
-            result = StateTransitionResult.ChangedResult(changedEvent);
+            var changedEvent = Change(point, previous, exposed, timestamp);
+            var result = StateTransitionResult.ChangedResult(changedEvent);
+            DataPointChanged?.Invoke(changedEvent);
+            return result;
         }
-
-        DataPointChanged?.Invoke(changedEvent!);
-        return result;
     }
 
     private ScalarValue ApplyValueProjections(DataPointDefinition point, ScalarValue value)

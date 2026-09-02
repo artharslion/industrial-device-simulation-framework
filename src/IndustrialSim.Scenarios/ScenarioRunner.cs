@@ -161,7 +161,7 @@ public static class ConditionEvaluator
     public static bool Evaluate(string expression, StateStore state)
     {
         var match = Match(expression);
-        var current = state.Get(new DataPointId(match.Groups["name"].Value))?.Value;
+        var current = state.GetExposedInternal(new DataPointId(match.Groups["name"].Value))?.Value;
         if (current is null) return false;
         var literal = match.Groups["value"].Value;
         int comparison;

@@ -58,10 +58,10 @@ public sealed class SimulationHost : IAsyncDisposable
             _sensor = new Sensor(state);
             commandHandlers["reset"] = _ => { _sensor.Reset(Engine.CurrentTime); return Task.CompletedTask; };
         }
-        Runtime = new InMemoryDeviceRuntime(configuration.Device, state, commandHandlers);
+        Runtime = new InMemoryDeviceRuntime(configuration.Device, state, commandHandlers, () => Engine.CurrentTime);
         FaultManager = new FaultManager(Engine);
         _deviceFaultController = new DeviceFaultController(Runtime.State);
-        Runtime.State.DataPointChanged += change => _events.Enqueue(change);
+        Runtime.RuntimeEventPublished += @event => _events.Enqueue(@event);
         FaultManager.LifecycleChanged += OnFaultLifecycleChanged;
 
         if (configuration.Configuration.Protocols?.Opcua?.Enabled == true)
@@ -130,6 +130,7 @@ public sealed class SimulationHost : IAsyncDisposable
                 started.Add(protocol);
             }
             IsRunning = true;
+            Runtime.Publish(new DeviceStarted(Engine.CurrentTime, Runtime.Definition.Id));
             if (!IsDeterministic) StartRealTimeLoop();
         }
         catch
@@ -222,10 +223,12 @@ public sealed class SimulationHost : IAsyncDisposable
             _loopCts = null;
             _loopTask = null;
         }
+        var publishStopped = IsRunning;
         foreach (var protocol in _protocols.Values.Reverse())
             if (protocol.IsRunning) await protocol.StopAsync(cancellationToken);
         await Engine.StopAsync(cancellationToken);
         IsRunning = false;
+        if (publishStopped) Runtime.Publish(new DeviceStopped(Engine.CurrentTime, Runtime.Definition.Id));
     }
 
     public async ValueTask DisposeAsync()
@@ -273,7 +276,7 @@ public sealed class SimulationHost : IAsyncDisposable
         {
             case FaultCategory.Data:
                 var dataPointId = new DataPointId(fault.Target!);
-                var current = State.Get(dataPointId)!;
+                var current = State.GetExposedInternal(dataPointId)!;
                 var point = Runtime.Definition.DataPoints.Single(item => item.Name.Equals(fault.Target, StringComparison.OrdinalIgnoreCase));
                 Enum.TryParse<DataFaultType>(fault.Type, true, out var dataType);
                 var seed = fault.Metadata is not null && fault.Metadata.ContainsKey("seed") ? MetadataInt(fault, "seed") : Seed;
@@ -327,7 +330,7 @@ public sealed class SimulationHost : IAsyncDisposable
             case FaultCategory.Data:
                 if (string.IsNullOrWhiteSpace(fault.Target)) throw new ArgumentException($"Data fault '{fault.Id}' requires a datapoint target.");
                 if (!Runtime.Definition.DataPoints.Any(point => point.Name.Equals(fault.Target, StringComparison.OrdinalIgnoreCase))) throw new ArgumentException($"Data fault '{fault.Id}' targets unknown data point '{fault.Target}'.");
-                if (State.Get(new DataPointId(fault.Target)) is null) throw new ArgumentException($"Data fault '{fault.Id}' requires an initialized data point target.");
+                if (State.GetExposedInternal(new DataPointId(fault.Target)) is null) throw new ArgumentException($"Data fault '{fault.Id}' requires an initialized data point target.");
                 if (!Enum.TryParse<DataFaultType>(fault.Type, true, out _)) throw new ArgumentException($"Data fault '{fault.Id}' has unsupported type '{fault.Type}'.");
                 ValidateNumericMetadata<double>(fault, "parameter", double.TryParse);
                 ValidateNumericMetadata<int>(fault, "seed", int.TryParse);

@@ -80,4 +80,45 @@ public class StateStoreTests
         Assert.Equal(0, store.Get(new DataPointId("speed"))!.Value);
         Assert.Equal(25d, store.Get(new DataPointId("temperature"))!.Value);
     }
+
+    [Fact]
+    public async Task Concurrent_observers_receive_changes_in_commit_order()
+    {
+        var store = new StateStore(Definition());
+        var firstObserverEntered = new ManualResetEventSlim();
+        var releaseFirstObserver = new ManualResetEventSlim();
+        var observed = new List<int>();
+        store.DataPointChanged += change =>
+        {
+            lock (observed) observed.Add((int)change.NewValue.Value);
+            if ((int)change.NewValue.Value == 1)
+            {
+                firstObserverEntered.Set();
+                releaseFirstObserver.Wait(TimeSpan.FromSeconds(5));
+            }
+        };
+
+        var first = Task.Run(() => store.Set(new DataPointId("speed"), 1));
+        Assert.True(firstObserverEntered.Wait(TimeSpan.FromSeconds(5)));
+        var second = Task.Run(() => store.Set(new DataPointId("speed"), 2));
+        await Task.Delay(50);
+        lock (observed) Assert.Equal(new[] { 1 }, observed);
+        releaseFirstObserver.Set();
+        await Task.WhenAll(first, second);
+        lock (observed) Assert.Equal(new[] { 1, 2 }, observed);
+    }
+
+    [Fact]
+    public void External_reads_hide_write_only_values_while_internal_reads_remain_available()
+    {
+        var definition = new DeviceDefinition(new DeviceId("device"), "sensor", new[]
+        {
+            new DataPointDefinition("secret", DataType.Int32, DataPointAccess.Write, 42)
+        });
+        var store = new StateStore(definition);
+
+        Assert.Null(store.Get(new DataPointId("secret")));
+        Assert.Equal(42, store.GetInternal(new DataPointId("secret"))!.Value);
+        Assert.DoesNotContain("secret", store.Snapshot().Keys);
+    }
 }

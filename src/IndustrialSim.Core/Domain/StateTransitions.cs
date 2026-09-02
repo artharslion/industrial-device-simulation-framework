@@ -29,6 +29,25 @@ public sealed record DataPointChanged : RuntimeEvent
         new Dictionary<string, string>(metadata ?? new Dictionary<string, string>(), StringComparer.Ordinal);
 }
 
+public sealed record CommandExecuted(
+    SimulationTime Timestamp,
+    DeviceId DeviceId,
+    string CommandName,
+    IReadOnlyDictionary<string, string>? EventMetadata = null)
+    : RuntimeEvent(Timestamp, DeviceId, new Dictionary<string, string>(EventMetadata ?? new Dictionary<string, string>(), StringComparer.Ordinal));
+
+public sealed record DeviceStarted(
+    SimulationTime Timestamp,
+    DeviceId DeviceId,
+    IReadOnlyDictionary<string, string>? EventMetadata = null)
+    : RuntimeEvent(Timestamp, DeviceId, new Dictionary<string, string>(EventMetadata ?? new Dictionary<string, string>(), StringComparer.Ordinal));
+
+public sealed record DeviceStopped(
+    SimulationTime Timestamp,
+    DeviceId DeviceId,
+    IReadOnlyDictionary<string, string>? EventMetadata = null)
+    : RuntimeEvent(Timestamp, DeviceId, new Dictionary<string, string>(EventMetadata ?? new Dictionary<string, string>(), StringComparer.Ordinal));
+
 public sealed record StateTransitionResult
 {
     private StateTransitionResult(bool succeeded, bool changed, ScalarValue? currentValue, DataPointChanged? @event, string? error)

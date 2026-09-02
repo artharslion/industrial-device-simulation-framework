@@ -12,24 +12,30 @@ public interface IDeviceRuntime
     StateTransitionResult Write(string datapoint, object? value);
     StateBatchTransitionResult WriteBatch(IEnumerable<(string DataPoint, object? Value)> updates);
     Task InvokeCommandAsync(string command, CancellationToken cancellationToken = default);
+    event Action<RuntimeEvent>? RuntimeEventPublished;
+    void Publish(RuntimeEvent runtimeEvent);
 }
 
 public sealed class InMemoryDeviceRuntime : IDeviceRuntime
 {
     private readonly HashSet<string> _commands;
     private readonly IReadOnlyDictionary<string, Func<CancellationToken, Task>> _commandHandlers;
+    private readonly Func<SimulationTime> _timestamp;
     public InMemoryDeviceRuntime(DeviceDefinition definition)
-        : this(definition, null, null) { }
-    public InMemoryDeviceRuntime(DeviceDefinition definition, StateStore? state, IReadOnlyDictionary<string, Func<CancellationToken, Task>>? commandHandlers)
+        : this(definition, null, null, null) { }
+    public InMemoryDeviceRuntime(DeviceDefinition definition, StateStore? state, IReadOnlyDictionary<string, Func<CancellationToken, Task>>? commandHandlers, Func<SimulationTime>? timestamp)
     {
         Definition = definition ?? throw new ArgumentNullException(nameof(definition));
         State = state ?? new StateStore(definition);
         _commands = definition.Commands.Select(command => command.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         _commandHandlers = commandHandlers ?? new Dictionary<string, Func<CancellationToken, Task>>(StringComparer.OrdinalIgnoreCase);
+        _timestamp = timestamp ?? (() => SimulationTime.Zero);
+        State.DataPointChanged += change => RuntimeEventPublished?.Invoke(change);
     }
     public DeviceDefinition Definition { get; }
     public StateStore State { get; }
     public int CommandsInvoked { get; private set; }
+    public event Action<RuntimeEvent>? RuntimeEventPublished;
     public ScalarValue? Read(string datapoint) => State.Get(new DataPointId(datapoint));
     public StateTransitionResult Write(string datapoint, object? value) => State.Set(new DataPointId(datapoint), value);
     public StateBatchTransitionResult WriteBatch(IEnumerable<(string DataPoint, object? Value)> updates) =>
@@ -40,7 +46,9 @@ public sealed class InMemoryDeviceRuntime : IDeviceRuntime
         if (!_commands.Contains(command)) throw new ArgumentException($"Command '{command}' does not exist.");
         if (_commandHandlers.TryGetValue(command, out var handler)) await handler(cancellationToken);
         CommandsInvoked++;
+        Publish(new CommandExecuted(_timestamp(), Definition.Id, command));
     }
+    public void Publish(RuntimeEvent runtimeEvent) => RuntimeEventPublished?.Invoke(runtimeEvent ?? throw new ArgumentNullException(nameof(runtimeEvent)));
 }
 
 public interface IProtocolAdapter
