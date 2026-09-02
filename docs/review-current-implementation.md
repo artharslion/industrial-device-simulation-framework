@@ -1,5 +1,43 @@
 # Current Implementation Review Notes
 
+## MVP Compliance Verification (2026-09-02)
+
+The Phase 0-8 compliance remediation plan is complete through Task 10. The
+repository now additionally verifies:
+
+- Scenario reference/type/duration validation, relative `wait` behavior, and
+  rejected-transition propagation.
+- Transactional, persistent Data/Device/Network Fault behavior and recovery.
+- Lifecycle-controlled real-time simulation time.
+- YAML-composed Pump, Motor, and Sensor behavior and canonical examples.
+- Real OPC UA and Modbus wire-level disconnect, timeout, and latency faults
+  without stopping device simulation.
+- Joint device/Modbus configuration validation and atomic function 16 writes.
+- Commit-ordered state notifications, external write-only access enforcement,
+  and DataPoint/Command/Device runtime events.
+- OPC UA `SByte`/`Byte` scalar mappings and standard runtime event reporting.
+- CLI/environment/YAML/default host precedence, structured .NET logging,
+  DOM-safe Web rendering, scenario mounts in Compose, and placeholder cleanup.
+
+Release verification results:
+
+```text
+dotnet restore IndustrialSim.sln                         PASS
+dotnet build IndustrialSim.sln -c Release --no-restore  PASS (0 warnings, 0 errors)
+dotnet test IndustrialSim.sln -c Release --no-build     PASS (127 tests)
+git diff --check                                        PASS
+docker compose config                                   PASS
+```
+
+The Release Web build was also started locally on alternate ports. HTTP
+returned 200 with the developer console, a Scenario changed Pump state, and
+TCP connections succeeded to the live OPC UA and Modbus listeners.
+
+Docker image build and container live verification were not run because the
+Docker Desktop Linux daemon was unavailable on this workstation
+(`dockerDesktopLinuxEngine` named pipe missing). This is an environment
+limitation, not a known repository failure; `docker compose config` passed.
+
 ## Resolution Status (2026-09-01)
 
 The acceptance-critical gaps described below were resolved during Phase 6R
