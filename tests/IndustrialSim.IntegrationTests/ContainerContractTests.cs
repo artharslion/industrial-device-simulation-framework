@@ -17,5 +17,8 @@ public sealed class ContainerContractTests
         Assert.Contains("5020:5020", compose, StringComparison.Ordinal);
         Assert.Contains("8080:8080", compose, StringComparison.Ordinal);
         Assert.Contains("./examples/devices/pump.yaml:/app/config/device.yaml:ro", compose, StringComparison.Ordinal);
+        Assert.Contains("./examples/scenarios:/app/config/scenarios:ro", compose, StringComparison.Ordinal);
+
+        Assert.Empty(Directory.EnumerateFiles(Path.Combine(root, "src"), "Class1.cs", SearchOption.AllDirectories));
     }
 }

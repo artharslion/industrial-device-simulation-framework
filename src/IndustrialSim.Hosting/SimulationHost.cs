@@ -16,7 +16,36 @@ using IndustrialSim.Scenarios;
 
 namespace IndustrialSim.Hosting;
 
-public sealed record SimulationHostOptions(bool Deterministic = false, int Seed = 0);
+public sealed record HostConfigurationOverrides(string? OpcUaEndpoint = null, int? ModbusPort = null, int? WebPort = null, string? LogLevel = null)
+{
+    public static HostConfigurationOverrides Resolve(
+        string? cliOpcUaEndpoint = null,
+        string? cliModbusPort = null,
+        string? cliWebPort = null,
+        string? cliLogLevel = null,
+        Func<string, string?>? environment = null)
+    {
+        environment ??= Environment.GetEnvironmentVariable;
+        var endpoint = First(cliOpcUaEndpoint, environment("INDUSTRIALSIM_OPCUA_ENDPOINT"));
+        if (endpoint is not null && (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || !uri.Scheme.Equals("opc.tcp", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(uri.Host) || uri.Port is < 1 or > 65535))
+            throw new ArgumentException($"OPC UA endpoint override '{endpoint}' must be an absolute opc.tcp URI with a valid host and port.");
+        return new HostConfigurationOverrides(
+            endpoint,
+            ParsePort("Modbus", First(cliModbusPort, environment("INDUSTRIALSIM_MODBUS_PORT"))),
+            ParsePort("Web", First(cliWebPort, environment("INDUSTRIALSIM_WEB_PORT"))),
+            First(cliLogLevel, environment("INDUSTRIALSIM_LOG_LEVEL")));
+    }
+
+    private static string? First(string? preferred, string? fallback) => !string.IsNullOrWhiteSpace(preferred) ? preferred.Trim() : !string.IsNullOrWhiteSpace(fallback) ? fallback.Trim() : null;
+    private static int? ParsePort(string name, string? value)
+    {
+        if (value is null) return null;
+        if (!int.TryParse(value, out var port) || port is < 1 or > 65535) throw new ArgumentException($"{name} port override must be between 1 and 65535.");
+        return port;
+    }
+}
+
+public sealed record SimulationHostOptions(bool Deterministic = false, int Seed = 0, HostConfigurationOverrides? Overrides = null);
 
 public sealed class SimulationHost : IAsyncDisposable
 {
@@ -85,6 +114,7 @@ public sealed class SimulationHost : IAsyncDisposable
     public bool IsRunning { get; private set; }
     public bool IsDeterministic => _options.Deterministic;
     public int Seed => _options.Seed;
+    public int WebPort => _options.Overrides?.WebPort ?? _configuration.Configuration.Web?.Port ?? 8080;
 
     public static Task<SimulationHost> LoadAsync(string path, CancellationToken cancellationToken = default) => LoadAsync(path, new SimulationHostOptions(), cancellationToken);
 
@@ -117,12 +147,12 @@ public sealed class SimulationHost : IAsyncDisposable
                 switch (name)
                 {
                     case "opcua":
-                        var endpoint = _configuration.Configuration.Protocols?.Opcua?.Endpoint ?? "opc.tcp://0.0.0.0:4840";
+                        var endpoint = _options.Overrides?.OpcUaEndpoint ?? _configuration.Configuration.Protocols?.Opcua?.Endpoint ?? "opc.tcp://0.0.0.0:4840";
                         var opcPort = Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && uri.Port > 0 ? uri.Port : 4840;
                         await protocol.StartAsync(Runtime, new ProtocolOptions(endpoint, opcPort), cancellationToken);
                         break;
                     case "modbus":
-                        var modbusPort = _configuration.Configuration.Protocols?.Modbus?.Port ?? 5020;
+                        var modbusPort = _options.Overrides?.ModbusPort ?? _configuration.Configuration.Protocols?.Modbus?.Port ?? 5020;
                         await protocol.StartAsync(Runtime, new ProtocolOptions(Port: modbusPort), cancellationToken);
                         if (modbusPort == 0) await ((ModbusAdapter)protocol).StartServerAsync(0, cancellationToken);
                         break;

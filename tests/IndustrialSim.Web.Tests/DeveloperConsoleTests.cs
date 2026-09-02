@@ -34,5 +34,7 @@ public sealed class DeveloperConsoleTests
         Assert.Contains("Fault", html, StringComparison.Ordinal);
         Assert.Contains("Paused", html, StringComparison.Ordinal);
         Assert.Contains("validation-error", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("innerHTML=", html, StringComparison.Ordinal);
+        Assert.Contains("createElement", html, StringComparison.Ordinal);
     }
 }

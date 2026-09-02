@@ -1,5 +1,6 @@
 using IndustrialSim.Configuration;
 using IndustrialSim.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace IndustrialSim.Cli;
 
@@ -9,6 +10,7 @@ public static class CliRunner
         string[] args,
         TextWriter? output = null,
         TextWriter? error = null,
+        ILogger? logger = null,
         CancellationToken cancellationToken = default)
     {
         output ??= Console.Out;
@@ -24,6 +26,7 @@ public static class CliRunner
             if (args[0].Equals("validate", StringComparison.OrdinalIgnoreCase))
             {
                 new YamlConfigurationLoader().Load(await File.ReadAllTextAsync(args[1], cancellationToken));
+                logger?.LogInformation("Validated industrial simulation configuration {ConfigurationPath}", args[1]);
                 await output.WriteLineAsync("Configuration valid.");
                 return 0;
             }
@@ -31,12 +34,14 @@ public static class CliRunner
             if (args[0].Equals("run", StringComparison.OrdinalIgnoreCase))
             {
                 var options = ParseHostOptions(args);
+                logger?.LogInformation("Starting industrial simulation from {ConfigurationPath} with deterministic mode {Deterministic} and seed {Seed}", args[1], options.Deterministic, options.Seed);
                 await output.WriteLineAsync($"Starting runtime. Deterministic={options.Deterministic}, Seed={options.Seed}.");
                 await using var host = await SimulationHost.LoadAsync(args[1], options, cancellationToken);
                 await host.StartAsync(cancellationToken);
                 var duration = ParseDuration(args);
                 await output.WriteLineAsync($"Runtime started at {host.Engine.CurrentTime.Elapsed}. Deterministic={host.IsDeterministic}, Seed={host.Seed}, OPC UA={IsRunning(host, "opcua")}, Modbus={IsRunning(host, "modbus")}.");
                 await RunForAsync(host, duration, cancellationToken);
+                logger?.LogInformation("Industrial simulation for device {DeviceId} completed", host.Runtime.Definition.Id.Value);
                 return 0;
             }
 
@@ -47,6 +52,7 @@ public static class CliRunner
                 await using var host = await SimulationHost.LoadAsync(configPath, options, cancellationToken);
                 await host.StartAsync(cancellationToken);
                 host.RunScenario(await File.ReadAllTextAsync(args[2], cancellationToken));
+                logger?.LogInformation("Running scenario {ScenarioPath} for device {DeviceId}", args[2], host.Runtime.Definition.Id.Value);
                 var duration = ParseDuration(args);
                 if (duration.HasValue) await RunForAsync(host, duration, cancellationToken);
                 else await RunForAsync(host, null, cancellationToken);
@@ -60,11 +66,13 @@ public static class CliRunner
         }
         catch (OperationCanceledException)
         {
+            logger?.LogInformation("Industrial simulation operation was cancelled");
             await output.WriteLineAsync("Operation cancelled.");
             return 0;
         }
         catch (Exception exception) when (exception is IOException or ArgumentException or InvalidOperationException)
         {
+            logger?.LogError(exception, "Industrial simulation command failed");
             await error.WriteLineAsync($"Error: {exception.Message}");
             return 1;
         }
@@ -95,7 +103,11 @@ public static class CliRunner
         var seedText = Option(args, "--seed");
         if (seedText is not null && !int.TryParse(seedText, out _)) throw new ArgumentException("--seed must be a 32-bit integer.");
         var seed = seedText is null ? 0 : int.Parse(seedText);
-        return new SimulationHostOptions(deterministic, seed);
+        var overrides = HostConfigurationOverrides.Resolve(
+            Option(args, "--opcua-endpoint"),
+            Option(args, "--modbus-port"),
+            cliLogLevel: Option(args, "--log-level"));
+        return new SimulationHostOptions(deterministic, seed, overrides);
     }
 
     private static async Task RunForAsync(SimulationHost host, TimeSpan? duration, CancellationToken cancellationToken)

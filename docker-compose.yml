@@ -13,3 +13,4 @@ services:
       - "8080:8080"
     volumes:
       - ./examples/devices/pump.yaml:/app/config/device.yaml:ro
+      - ./examples/scenarios:/app/config/scenarios:ro

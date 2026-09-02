@@ -109,6 +109,9 @@ public static class DeveloperConsolePage
     const request = async (url, options={}) => { const response = await fetch(url, options); const text = await response.text(); let data={}; try{data=text?JSON.parse(text):{}}catch{data={error:text}} if(!response.ok) throw new Error(data.error||`${response.status} ${response.statusText}`); return data; };
     const showError = error => { const box=$('validation-error'); box.textContent=error.message||String(error); box.classList.add('visible'); setTimeout(()=>box.classList.remove('visible'),6000); };
     const lamp = (id,state) => { const el=$(id); el.className=`lamp ${String(state).toLowerCase()}`; };
+    const node = (tag,text,className) => { const element=document.createElement(tag); if(text!==undefined) element.textContent=text; if(className) element.className=className; return element; };
+    const renderState = state => { const body=$('state-body'); body.replaceChildren(); const entries=Object.entries(state); if(!entries.length){const row=node('tr');const cell=node('td','No datapoints');cell.colSpan=2;row.append(cell);body.append(row);return} entries.forEach(([name,value])=>{const row=node('tr');row.append(node('td',name),node('td',JSON.stringify(value)));body.append(row)}); };
+    const renderFaults = faults => { const list=$('fault-list'); list.replaceChildren(); if(!faults.length){list.append(node('div','No active faults.','hint'));return} const categories=['Data','Device','Network']; faults.forEach(fault=>{const row=node('div',undefined,'fault-row');const button=node('button','Recover');button.dataset.recover=String(fault.id);row.append(node('span',`${fault.id} · ${categories[fault.category]??fault.category} · ${fault.type}`),button);list.append(row)}); };
     const refresh = async () => { try {
       const [state,runtime,protocols,events,faults] = await Promise.all(['/api/state','/api/runtime','/api/protocols','/api/events','/api/faults'].map(url=>request(url)));
       $('device-id').textContent=runtime.deviceId; $('device-type').textContent=`${runtime.deviceType} · ${runtime.deterministic?'deterministic':'real-time'} · seed ${runtime.seed}`;
@@ -116,10 +119,10 @@ public static class DeveloperConsolePage
       $('opcua-state').textContent=protocols.opcua?'Online':'Offline'; lamp('opcua-lamp',protocols.opcua?'running':'stopped');
       $('modbus-state').textContent=protocols.modbus?'Online':'Offline'; lamp('modbus-lamp',protocols.modbus?'running':'stopped');
       const active=runtime.scenario.running||runtime.activeFaults>0; $('activity-state').textContent=runtime.scenario.running?`Scenario: ${runtime.scenario.name}`:runtime.activeFaults?`${runtime.activeFaults} Fault Active`:'Idle'; lamp('activity-lamp',active?'active':'stopped'); $('scenario-state').textContent=runtime.scenario.running?'Running':'Stopped';
-      $('state-body').innerHTML=Object.entries(state).map(([name,value])=>`<tr><td>${name}</td><td>${JSON.stringify(value)}</td></tr>`).join('')||'<tr><td colspan="2">No datapoints</td></tr>';
+      renderState(state);
       $('event-terminal').textContent=events.length?events.slice(-80).map((event,index)=>`${String(index+1).padStart(3,'0')}  ${JSON.stringify(event)}`).join('\n'):'Waiting for events…';
-      const faultCategories=['Data','Device','Network']; $('fault-list').innerHTML=faults.length?faults.map(f=>`<div class="fault-row"><span>${f.id} · ${faultCategories[f.category]??f.category} · ${f.type}</span><button data-recover="${f.id}">Recover</button></div>`).join(''):'<div class="hint">No active faults.</div>';
-      document.querySelectorAll('[data-recover]').forEach(button=>button.onclick=async()=>{try{await request(`/api/fault/recover/${button.dataset.recover}`,{method:'POST'});await refresh()}catch(error){showError(error)}});
+      renderFaults(faults);
+      document.querySelectorAll('[data-recover]').forEach(button=>button.onclick=async()=>{try{await request(`/api/fault/recover/${encodeURIComponent(button.dataset.recover)}`,{method:'POST'});await refresh()}catch(error){showError(error)}});
       if($('scenario-yaml').value.includes('pump-001')) $('scenario-yaml').value=$('scenario-yaml').value.replaceAll('pump-001',runtime.deviceId);
       $('tick').disabled=!runtime.deterministic;
     } catch(error){ showError(error); } };

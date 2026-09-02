@@ -79,6 +79,17 @@ Open [http://localhost:8080](http://localhost:8080). The console provides:
 
 The JSON API is available under `/api/state`, `/api/runtime`, `/api/protocols`, `/api/scenario`, `/api/fault`, `/api/faults`, and `/api/events`.
 
+Host configuration precedence is command-line override, environment variable,
+YAML, then built-in default. Supported overrides are:
+
+- `--opcua-endpoint` / `INDUSTRIALSIM_OPCUA_ENDPOINT`
+- `--modbus-port` / `INDUSTRIALSIM_MODBUS_PORT`
+- Web `--web-port` / `INDUSTRIALSIM_WEB_PORT`
+- `--log-level` / `INDUSTRIALSIM_LOG_LEVEL`
+
+The Web host and CLI emit structured console logs through the standard .NET
+logging abstractions.
+
 ## Protocol endpoints
 
 The canonical Pump configuration exposes:
@@ -129,7 +140,9 @@ See [examples/devices/pump.yaml](examples/devices/pump.yaml) and [examples/scena
 docker compose up --build
 ```
 
-The Compose service mounts `examples/devices/pump.yaml` read-only and publishes ports `4840`, `5020`, and `8080`.
+The Compose service mounts `examples/devices/pump.yaml` and the
+`examples/scenarios` directory read-only, and publishes ports `4840`, `5020`,
+and `8080`.
 
 To build without Compose:
 
