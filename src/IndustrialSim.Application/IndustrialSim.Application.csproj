@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Protocol- and transport-independent platform use cases and contracts.</Description>
+  </PropertyGroup>
+</Project>

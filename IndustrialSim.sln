@@ -49,6 +49,14 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndustrialSim.Configuration
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndustrialSim.Hosting", "src\IndustrialSim.Hosting\IndustrialSim.Hosting.csproj", "{E840CA85-89CA-4FC0-9F9C-26C1E22A897E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndustrialSim.Application", "src\IndustrialSim.Application\IndustrialSim.Application.csproj", "{A11C4E2D-6D44-4E0D-A100-000000000001}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndustrialSim.Persistence", "src\IndustrialSim.Persistence\IndustrialSim.Persistence.csproj", "{A11C4E2D-6D44-4E0D-A100-000000000002}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndustrialSim.Application.Tests", "tests\IndustrialSim.Application.Tests\IndustrialSim.Application.Tests.csproj", "{A11C4E2D-6D44-4E0D-A100-000000000003}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndustrialSim.Persistence.Tests", "tests\IndustrialSim.Persistence.Tests\IndustrialSim.Persistence.Tests.csproj", "{A11C4E2D-6D44-4E0D-A100-000000000004}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -311,6 +319,22 @@ Global
 		{E840CA85-89CA-4FC0-9F9C-26C1E22A897E}.Release|x64.Build.0 = Release|Any CPU
 		{E840CA85-89CA-4FC0-9F9C-26C1E22A897E}.Release|x86.ActiveCfg = Release|Any CPU
 		{E840CA85-89CA-4FC0-9F9C-26C1E22A897E}.Release|x86.Build.0 = Release|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000001}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000001}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000001}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000001}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000002}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000002}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000002}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000002}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000003}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000003}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000003}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000003}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000004}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000004}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000004}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000004}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -337,5 +361,9 @@ Global
 		{DF42F21E-50F3-4136-A021-2CE7456196E1} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{30B498E2-7950-482C-8FFD-025A0FDEB0F2} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{E840CA85-89CA-4FC0-9F9C-26C1E22A897E} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{A11C4E2D-6D44-4E0D-A100-000000000001} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{A11C4E2D-6D44-4E0D-A100-000000000002} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{A11C4E2D-6D44-4E0D-A100-000000000003} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{A11C4E2D-6D44-4E0D-A100-000000000004} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal
