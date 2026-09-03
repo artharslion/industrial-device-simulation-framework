@@ -1,9 +1,13 @@
 import { mount } from '@vue/test-utils'
+import { createPinia } from 'pinia'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import { describe, expect, it, vi } from 'vitest'
 import App from './App.vue'
 import { developerConsoleApiKey } from './api'
 import type { DeveloperConsoleApi } from './api'
 import { runtimeLiveConnectionKey } from './composables/useRuntimeSignalR'
+import ConsoleLayout from './layouts/ConsoleLayout.vue'
+import { routes } from './router'
 
 const api: DeveloperConsoleApi = {
   getSnapshot: vi.fn().mockResolvedValue({
@@ -24,12 +28,15 @@ const api: DeveloperConsoleApi = {
 describe('developer console', () => {
   it('renders the operational workspace and runtime controls', async () => {
     const live = { start: vi.fn().mockResolvedValue(undefined), stop: vi.fn().mockResolvedValue(undefined) }
-    const wrapper = mount(App, { global: { provide: { [developerConsoleApiKey as symbol]: api, [runtimeLiveConnectionKey as symbol]: live } } })
+    const testRouter = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: ConsoleLayout, children: routes }] })
+    await testRouter.push('/'); await testRouter.isReady()
+    const wrapper = mount(App, { global: { plugins: [createPinia(), testRouter], provide: { [developerConsoleApiKey as symbol]: api, [runtimeLiveConnectionKey as symbol]: live } } })
     await vi.waitFor(() => expect(wrapper.text()).toContain('pump-001'))
 
     expect(wrapper.find('[aria-label="Workspace navigation"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('StateStore datapoints')
-    expect(wrapper.text()).toContain('Scenario control')
-    expect(wrapper.text()).toContain('Fault control')
+    expect(wrapper.text()).toContain('Quick scenario')
+    expect(wrapper.text()).toContain('Fault injection')
+    expect(wrapper.findAll('.nav-item')).toHaveLength(8)
   })
 })

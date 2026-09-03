@@ -9,17 +9,13 @@
 
   <ItemGroup>
     <ClientAppSource Include="$(ClientAppRoot)src\**\*;$(ClientAppRoot)index.html;$(ClientAppRoot)package.json;$(ClientAppRoot)package-lock.json;$(ClientAppRoot)tsconfig.json;$(ClientAppRoot)vite.config.ts" />
-    <Content Remove="wwwroot\index.html;wwwroot\assets\app.js;wwwroot\assets\index.css" />
+    <Content Remove="wwwroot\index.html;wwwroot\assets\**\*" />
     <Content Include="wwwroot\index.html"
              Link="wwwroot\index.html"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="wwwroot\assets\app.js"
-             Link="wwwroot\assets\app.js"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="wwwroot\assets\index.css"
-             Link="wwwroot\assets\index.css"
+    <Content Include="wwwroot\assets\**\*"
+             Link="wwwroot\assets\%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

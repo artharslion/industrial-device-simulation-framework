@@ -1,13 +1,10 @@
 import type { InjectionKey } from 'vue'
-import type { FaultRequest, ProtocolStatus, RuntimeSnapshot } from './types'
+import type {
+  DeviceSummary, DeviceTemplateDocument, FaultRequest, ProtocolStatus, ProtocolSummary,
+  ScenarioCatalogItem, SessionSummary, SettingSummary, TemplatePackage, UserSummary, RuntimeSnapshot,
+} from './types'
 
 interface ProblemDetails { title?: string; detail?: string; errorCode?: string; error?: unknown }
-interface DeviceSummary { deviceId: string }
-interface ProtocolSummary {
-  deviceId: string
-  configured: Array<{ name: string; running: boolean }>
-  reserved: Array<{ name: string; port: number }>
-}
 
 export class ApiProblemError extends Error {
   constructor(message: string, public readonly status: number, public readonly errorCode?: string) {
@@ -16,7 +13,7 @@ export class ApiProblemError extends Error {
   }
 }
 
-async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(url, options)
   const text = await response.text()
   let body: unknown = undefined
@@ -108,3 +105,28 @@ export const developerConsoleApi: DeveloperConsoleApi = {
 }
 
 export const developerConsoleApiKey: InjectionKey<DeveloperConsoleApi> = Symbol('developerConsoleApi')
+
+const json = (method: string, body?: unknown): RequestInit => ({
+  method,
+  headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+  body: body === undefined ? undefined : JSON.stringify(body),
+})
+
+export const platformApi = {
+  session: () => request<SessionSummary>('/api/v1/auth/session'),
+  devices: () => request<DeviceSummary[]>('/api/v1/devices'),
+  protocols: () => request<ProtocolSummary[]>('/api/v1/protocols'),
+  templates: (query = '') => request<DeviceTemplateDocument[]>(`/api/v1/templates${query ? `?q=${encodeURIComponent(query)}` : ''}`),
+  template: (id: string, version: string) => request<TemplatePackage>(`/api/v1/templates/${encodeURIComponent(id)}/${encodeURIComponent(version)}`),
+  createTemplate: (value: TemplatePackage) => request<TemplatePackage>('/api/v1/templates', json('POST', value)),
+  deleteTemplate: (id: string, version: string) => request<void>(`/api/v1/templates/${encodeURIComponent(id)}/${encodeURIComponent(version)}`, { method: 'DELETE' }),
+  instantiateTemplate: (id: string, version: string, value: unknown) => request(`/api/v1/templates/${encodeURIComponent(id)}/${encodeURIComponent(version)}/instantiate`, json('POST', value)),
+  scenarios: () => request<ScenarioCatalogItem[]>('/api/v1/scenarios'),
+  scenario: (id: string) => request<ScenarioCatalogItem>(`/api/v1/scenarios/${encodeURIComponent(id)}`),
+  saveScenario: (id: string, value: Omit<ScenarioCatalogItem, 'id'>) => request<ScenarioCatalogItem>(`/api/v1/scenarios/${encodeURIComponent(id)}`, json('PUT', value)),
+  importScenario: (value: { id: string; name: string; yaml: string; editorJson: string }) => request<ScenarioCatalogItem>('/api/v1/scenarios/import', json('POST', value)),
+  exportScenario: (id: string) => request<string>(`/api/v1/scenarios/${encodeURIComponent(id)}/export`),
+  runScenario: (deviceId: string, scenarioId: string) => request(`/api/v1/devices/${encodeURIComponent(deviceId)}/scenarios/${encodeURIComponent(scenarioId)}/start`, { method: 'POST' }),
+  users: () => request<UserSummary[]>('/api/v1/users'),
+  settings: () => request<SettingSummary[]>('/api/v1/settings'),
+}

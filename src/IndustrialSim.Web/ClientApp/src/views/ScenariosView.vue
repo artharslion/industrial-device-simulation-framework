@@ -1,0 +1,5 @@
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'; import { platformApi } from '../api'; import PageHeader from '../components/PageHeader.vue'; import ResourceState from '../components/ResourceState.vue'; import type { ScenarioCatalogItem } from '../types'
+const scenarios = ref<ScenarioCatalogItem[]>([]); const loading = ref(true); const error = ref(''); async function load() { try { scenarios.value = await platformApi.scenarios() } catch (cause) { error.value = String(cause) } finally { loading.value = false } }; onMounted(load)
+</script>
+<template><main class="content"><PageHeader eyebrow="Model" title="Scenarios" description="Build deterministic trigger/action flows and exchange them through the public YAML contract." /><ResourceState :loading="loading" :error="error" :empty="scenarios.length === 0" empty-text="No saved scenarios yet."><div class="list-panel"><div v-for="scenario in scenarios" :key="scenario.id" class="list-row"><div><strong>{{ scenario.name }}</strong><small>{{ scenario.id }}</small></div><span class="version-chip">rev {{ scenario.version }}</span></div></div></ResourceState></main></template>

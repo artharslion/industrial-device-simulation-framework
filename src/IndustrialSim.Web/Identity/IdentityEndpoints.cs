@@ -25,6 +25,7 @@ public static class IdentityEndpoints
         var auth = endpoints.MapGroup("/api/v1/auth").WithTags("Authentication");
         auth.MapPost("/bootstrap", BootstrapAsync).AllowAnonymous();
         auth.MapPost("/login", LoginAsync).AllowAnonymous();
+        auth.MapGet("/session", SessionAsync).AllowAnonymous();
         auth.MapPost("/password", ChangePasswordAsync).RequireAuthorization(IndustrialPolicies.Viewer);
 
         var users = endpoints.MapGroup("/api/v1/users").WithTags("Users").RequireAuthorization(IndustrialPolicies.Admin);
@@ -77,6 +78,23 @@ public static class IdentityEndpoints
         if (user is null) return IndustrialSimProblemDetails.Result(401, "Authentication required", "The current user is unavailable.", "authenticationRequired");
         var result = await userManager.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
         return result.Succeeded ? Results.NoContent() : IdentityFailure(result, "passwordChangeRejected");
+    }
+
+    private static async Task<IResult> SessionAsync(
+        ClaimsPrincipal principal,
+        IndustrialAuthOptions options,
+        UserManager<IndustrialSimUser> userManager)
+    {
+        if (options.Mode.Equals("Disabled", StringComparison.OrdinalIgnoreCase))
+            return Results.Ok(new { mode = options.Mode, authenticated = true, userName = "local-developer", roles = new[] { IndustrialRoles.Admin } });
+        var user = await userManager.GetUserAsync(principal);
+        return Results.Ok(new
+        {
+            mode = options.Mode,
+            authenticated = user is not null,
+            userName = user?.UserName,
+            roles = user is null ? [] : await userManager.GetRolesAsync(user)
+        });
     }
 
     private static async Task<IResult> ListUsersAsync(UserManager<IndustrialSimUser> userManager)

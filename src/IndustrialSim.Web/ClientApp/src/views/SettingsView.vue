@@ -1,0 +1,5 @@
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'; import { platformApi } from '../api'; import PageHeader from '../components/PageHeader.vue'; import ResourceState from '../components/ResourceState.vue'; import type { SettingSummary } from '../types'
+const settings = ref<SettingSummary[]>([]); const loading = ref(true); const error = ref(''); onMounted(async () => { try { settings.value = await platformApi.settings() } catch (cause) { error.value = String(cause) } finally { loading.value = false } })
+</script>
+<template><main class="content"><PageHeader eyebrow="Admin" title="Platform settings" description="Inspect persisted non-secret control-plane settings. Secrets remain outside the settings catalog." /><ResourceState :loading="loading" :error="error" :empty="settings.length === 0" empty-text="No persisted settings."><div class="list-panel"><div v-for="setting in settings" :key="setting.key" class="list-row"><div><strong>{{ setting.key }}</strong><small>revision {{ setting.version }}</small></div><code>{{ setting.valueJson }}</code></div></div></ResourceState></main></template>

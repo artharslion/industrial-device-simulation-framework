@@ -1,0 +1,5 @@
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'; import { platformApi } from '../api'; import PageHeader from '../components/PageHeader.vue'; import ResourceState from '../components/ResourceState.vue'; import type { UserSummary } from '../types'
+const users = ref<UserSummary[]>([]); const loading = ref(true); const error = ref(''); onMounted(async () => { try { users.value = await platformApi.users() } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) } finally { loading.value = false } })
+</script>
+<template><main class="content"><PageHeader eyebrow="Admin" title="Users and roles" description="Review the local identity boundary and Admin, Operator, and Viewer assignments." /><ResourceState :loading="loading" :error="error" :empty="users.length === 0"><div class="list-panel"><div v-for="user in users" :key="user.id" class="list-row"><div><strong>{{ user.userName }}</strong><small>{{ user.id }}</small></div><div class="tag-row"><span v-for="role in user.roles" :key="role">{{ role }}</span></div></div></div></ResourceState></main></template>

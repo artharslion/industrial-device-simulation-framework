@@ -52,3 +52,73 @@ export interface FaultRequest {
   type: string
   metadata: Record<string, string> | null
 }
+
+export interface DeviceSummary {
+  deviceId: string
+  deviceType: string
+  isRunning: boolean
+  deterministic: boolean
+  seed: number
+  simulationTime: string
+}
+
+export interface ProtocolSummary {
+  deviceId: string
+  configured: Array<{ name: string; running: boolean }>
+  reserved: Array<{ name: string; port: number }>
+}
+
+export interface TemplateDataPoint {
+  name: string
+  dataType: string
+  access: string
+  initial: ScalarValue
+  unit?: string | null
+  description?: string | null
+}
+
+export interface ProtocolMappingEntry {
+  dataPoint: string
+  address: string
+  dataType?: string | null
+  byteOrder?: string | null
+  wordOrder?: string | null
+}
+
+export interface ProtocolMappingProfile {
+  templateId: string
+  templateVersion: string
+  protocol: string
+  name: string
+  entries: ProtocolMappingEntry[]
+}
+
+export interface DeviceTemplateDocument {
+  id: string
+  version: string
+  displayName: string
+  deviceType: string
+  description?: string | null
+  tags: string[]
+  dataPoints: TemplateDataPoint[]
+  commands: string[]
+  events: string[]
+  behaviorJson: string
+}
+
+export interface TemplatePackage {
+  template: DeviceTemplateDocument
+  mappings: ProtocolMappingProfile[]
+}
+
+export interface ScenarioCatalogItem {
+  id: string
+  name: string
+  yaml: string
+  version: number
+  editorJson: string
+}
+
+export interface UserSummary { id: string; userName: string; roles: string[] }
+export interface SettingSummary { key: string; valueJson: string; version: number }
+export interface SessionSummary { mode: string; authenticated: boolean; userName?: string | null; roles: string[] }

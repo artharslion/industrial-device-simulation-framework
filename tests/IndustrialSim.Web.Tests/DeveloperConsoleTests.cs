@@ -34,10 +34,12 @@ public sealed class DeveloperConsoleTests
         var scriptPath = Regex.Match(html, "src=\"(?<path>/assets/[^\"]+\\.js)\"").Groups["path"].Value;
         Assert.NotEmpty(scriptPath);
         var script = await client.GetStringAsync(scriptPath);
-        Assert.Contains("Industrial Device Simulation", script, StringComparison.Ordinal);
-        Assert.Contains("Scenario control", script, StringComparison.Ordinal);
-        Assert.Contains("Fault control", script, StringComparison.Ordinal);
-        Assert.Contains("validation-error", script, StringComparison.Ordinal);
+        var overview = await client.GetStringAsync("/assets/OverviewView.js");
+        Assert.Contains("/templates", script, StringComparison.Ordinal);
+        Assert.Contains("/scenarios", script, StringComparison.Ordinal);
+        Assert.Contains("Runtime command center", overview, StringComparison.Ordinal);
+        Assert.Contains("Quick scenario", overview, StringComparison.Ordinal);
+        Assert.Contains("Fault injection", overview, StringComparison.Ordinal);
     }
 
     [Fact]
