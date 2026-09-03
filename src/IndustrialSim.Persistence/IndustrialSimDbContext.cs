@@ -1,11 +1,13 @@
 using IndustrialSim.Application.Abstractions;
 using IndustrialSim.Persistence.Entities;
+using IndustrialSim.Persistence.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace IndustrialSim.Persistence;
 
 public sealed class IndustrialSimDbContext(DbContextOptions<IndustrialSimDbContext> options)
-    : DbContext(options), IUnitOfWork
+    : IdentityDbContext<IndustrialSimUser>(options), IUnitOfWork
 {
     public DbSet<DeviceCatalogEntity> Devices => Set<DeviceCatalogEntity>();
     public DbSet<ScenarioCatalogEntity> Scenarios => Set<ScenarioCatalogEntity>();
@@ -29,6 +31,7 @@ public sealed class IndustrialSimDbContext(DbContextOptions<IndustrialSimDbConte
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder);
         modelBuilder.Entity<DeviceCatalogEntity>(entity =>
         {
             entity.ToTable("Devices");

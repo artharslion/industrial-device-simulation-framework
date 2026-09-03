@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.SignalR;
+using IndustrialSim.Application.Security;
 
 namespace IndustrialSim.Web.Hubs;
 
@@ -15,5 +16,5 @@ public sealed class RuntimeHub(RuntimeStreamBroker broker) : Hub
 public static class RuntimeHubEndpoints
 {
     public static HubEndpointConventionBuilder MapRuntimeHub(this IEndpointRouteBuilder endpoints) =>
-        endpoints.MapHub<RuntimeHub>("/hubs/runtime");
+        endpoints.MapHub<RuntimeHub>("/hubs/runtime").RequireAuthorization(IndustrialPolicies.Viewer);
 }

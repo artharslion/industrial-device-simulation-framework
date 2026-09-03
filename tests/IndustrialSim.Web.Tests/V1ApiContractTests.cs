@@ -117,6 +117,8 @@ public sealed class V1ApiContractTests
             builder.Services.AddIndustrialSimControlPlane(registry, $"Data Source={databasePath};Pooling=False");
             var app = builder.Build();
             app.UseIndustrialSimProblemDetails();
+            app.UseAuthentication();
+            app.UseAuthorization();
             app.MapIndustrialSimApi(legacy);
             app.MapIndustrialSimV1Api();
             app.MapRuntimeHub();

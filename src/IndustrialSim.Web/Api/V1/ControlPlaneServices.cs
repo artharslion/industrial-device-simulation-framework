@@ -1,8 +1,13 @@
 using IndustrialSim.Application.Catalogs;
+using IndustrialSim.Application.Security;
 using IndustrialSim.Hosting;
 using IndustrialSim.Persistence;
 using IndustrialSim.Persistence.Repositories;
 using IndustrialSim.Web.Hubs;
+using IndustrialSim.Persistence.Identity;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Authorization.Policy;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
 namespace IndustrialSim.Web.Api.V1;
@@ -12,7 +17,8 @@ public static class ControlPlaneServices
     public static IServiceCollection AddIndustrialSimControlPlane(
         this IServiceCollection services,
         SimulationRegistry registry,
-        string connectionString)
+        string connectionString,
+        string authMode = "Disabled")
     {
         services.AddSingleton<ISimulationRegistry>(registry);
         services.AddSingleton(registry);
@@ -29,6 +35,30 @@ public static class ControlPlaneServices
         });
         services.AddSignalR();
         services.AddOpenApi();
+        services.AddSingleton(new IndustrialAuthOptions(authMode));
+        services.AddIdentityApiEndpoints<IndustrialSimUser>(options =>
+        {
+            options.Password.RequiredLength = 12;
+            options.Password.RequireDigit = true;
+            options.Password.RequireLowercase = true;
+            options.Password.RequireUppercase = true;
+            options.Password.RequireNonAlphanumeric = true;
+            options.Lockout.MaxFailedAccessAttempts = 5;
+            options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+            options.User.RequireUniqueEmail = false;
+        })
+            .AddRoles<IdentityRole>()
+            .AddEntityFrameworkStores<IndustrialSimDbContext>();
+        services.AddAuthorizationBuilder()
+            .AddPolicy(IndustrialPolicies.Viewer, policy => policy.RequireAssertion(context =>
+                IsDisabled(authMode) || context.User.IsInRole(IndustrialRoles.Viewer) || context.User.IsInRole(IndustrialRoles.Operator) || context.User.IsInRole(IndustrialRoles.Admin)))
+            .AddPolicy(IndustrialPolicies.Operator, policy => policy.RequireAssertion(context =>
+                IsDisabled(authMode) || context.User.IsInRole(IndustrialRoles.Operator) || context.User.IsInRole(IndustrialRoles.Admin)))
+            .AddPolicy(IndustrialPolicies.Admin, policy => policy.RequireAssertion(context =>
+                IsDisabled(authMode) || context.User.IsInRole(IndustrialRoles.Admin)));
+        services.AddSingleton<IAuthorizationMiddlewareResultHandler, IndustrialAuthorizationResultHandler>();
         return services;
     }
+
+    private static bool IsDisabled(string mode) => mode.Equals("Disabled", StringComparison.OrdinalIgnoreCase);
 }

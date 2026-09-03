@@ -1,6 +1,7 @@
 using System.Text.Json;
 using IndustrialSim.Faults;
 using IndustrialSim.Hosting;
+using IndustrialSim.Application.Security;
 
 namespace IndustrialSim.Web;
 
@@ -8,7 +9,7 @@ public sealed record FaultRequest(string Id, string Category, string? Target, st
 
 public static class IndustrialSimApi
 {
-    public static IEndpointRouteBuilder MapIndustrialSimApi(this IEndpointRouteBuilder endpoints, SimulationHost simulation)
+    public static IEndpointRouteBuilder MapIndustrialSimApi(this IEndpointRouteBuilder endpoints, SimulationHost simulation, bool requireAuthorization = false)
     {
         var legacy = endpoints.MapGroup("/api").AddEndpointFilter(async (context, next) =>
         {
@@ -17,6 +18,9 @@ public static class IndustrialSimApi
             context.HttpContext.Response.Headers.Link = "</api/v1>; rel=\"successor-version\"";
             return await next(context);
         });
+        if (requireAuthorization) legacy.RequireAuthorization(IndustrialPolicies.Viewer);
+        var mutations = legacy.MapGroup(string.Empty);
+        if (requireAuthorization) mutations.RequireAuthorization(IndustrialPolicies.Operator);
         legacy.MapGet("/state", () => Results.Ok(simulation.State.Snapshot().ToDictionary(item => item.Key, item => item.Value?.Value)));
         legacy.MapGet("/runtime", () => Results.Ok(new
         {
@@ -36,7 +40,7 @@ public static class IndustrialSimApi
         }));
         legacy.MapGet("/events", () => Results.Ok(simulation.Events));
         legacy.MapGet("/faults", () => Results.Ok(simulation.FaultManager.ActiveFaults));
-        legacy.MapPost("/runtime/{command}", async (string command) =>
+        mutations.MapPost("/runtime/{command}", async (string command) =>
         {
             switch (command.ToLowerInvariant())
             {
@@ -48,19 +52,19 @@ public static class IndustrialSimApi
             }
             return Results.Ok(new { state = simulation.Engine.State.ToString() });
         });
-        legacy.MapPost("/runtime/tick/{seconds:double}", (double seconds) =>
+        mutations.MapPost("/runtime/tick/{seconds:double}", (double seconds) =>
         {
             if (!simulation.IsDeterministic) return Results.BadRequest(new { error = "Explicit ticks require deterministic mode." });
             if (seconds < 0) return Results.BadRequest(new { error = "Tick duration cannot be negative." });
             simulation.Tick(TimeSpan.FromSeconds(seconds));
             return Results.Ok(new { time = simulation.Engine.CurrentTime.Elapsed });
         });
-        legacy.MapPost("/state/{name}", (string name, JsonElement value) =>
+        mutations.MapPost("/state/{name}", (string name, JsonElement value) =>
         {
             var result = simulation.Runtime.Write(name, JsonValue(value));
             return result.Succeeded ? Results.Ok(result) : Results.BadRequest(new { error = result.Error });
         });
-        legacy.MapPost("/scenario", async (HttpRequest request) =>
+        mutations.MapPost("/scenario", async (HttpRequest request) =>
         {
             try
             {
@@ -71,8 +75,8 @@ public static class IndustrialSimApi
             }
             catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
         });
-        legacy.MapDelete("/scenario", () => simulation.StopScenario() ? Results.Ok(new { running = false }) : Results.NotFound(new { error = "No scenario is running." }));
-        legacy.MapPost("/fault", (FaultRequest request) =>
+        mutations.MapDelete("/scenario", () => simulation.StopScenario() ? Results.Ok(new { running = false }) : Results.NotFound(new { error = "No scenario is running." }));
+        mutations.MapPost("/fault", (FaultRequest request) =>
         {
             if (!Enum.TryParse<FaultCategory>(request.Category, true, out var category)) return Results.BadRequest(new { error = $"Unknown fault category '{request.Category}'." });
             try
@@ -91,7 +95,7 @@ public static class IndustrialSimApi
             }
             catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
         });
-        legacy.MapPost("/fault/recover/{id}", (string id) => simulation.RecoverFault(id) ? Results.Ok() : Results.NotFound());
+        mutations.MapPost("/fault/recover/{id}", (string id) => simulation.RecoverFault(id) ? Results.Ok() : Results.NotFound());
         return endpoints;
     }
 

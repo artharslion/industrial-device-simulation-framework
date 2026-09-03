@@ -1,5 +1,6 @@
 using System.Text.Json;
 using IndustrialSim.Application.Catalogs;
+using IndustrialSim.Application.Security;
 using IndustrialSim.Core.Domain;
 using IndustrialSim.Faults;
 using IndustrialSim.Hosting;
@@ -7,6 +8,8 @@ using IndustrialSim.Persistence;
 using IndustrialSim.Scenarios;
 using IndustrialSim.Web.Hubs;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace IndustrialSim.Web.Api.V1;
 
@@ -17,26 +20,27 @@ public static class V1Endpoints
         using (var scope = endpoints.ServiceProvider.CreateScope())
             scope.ServiceProvider.GetRequiredService<IndustrialSimDbContext>().Database.Migrate();
 
-        var api = endpoints.MapGroup("/api/v1").WithTags("IndustrialSim v1");
+        var api = endpoints.MapGroup("/api/v1").WithTags("IndustrialSim v1").RequireAuthorization(IndustrialPolicies.Viewer);
 
         api.MapGet("/devices", (ISimulationRegistry registry) => Results.Ok(registry.List()));
         api.MapGet("/devices/{deviceId}", (string deviceId, ISimulationRegistry registry) => Results.Ok(Summary(registry.Get(deviceId))));
-        api.MapPost("/devices", CreateDeviceAsync);
-        api.MapDelete("/devices/{deviceId}", RemoveDeviceAsync);
-        api.MapPost("/devices/{deviceId}/{operation}", RunLifecycleAsync);
-        api.MapPost("/devices/{deviceId}/tick/{seconds:double}", Tick);
-        api.MapPost("/devices/batch", RunBatchAsync);
+        api.MapPost("/devices", CreateDeviceAsync).RequireAuthorization(IndustrialPolicies.Admin);
+        api.MapDelete("/devices/{deviceId}", RemoveDeviceAsync).RequireAuthorization(IndustrialPolicies.Admin);
+        api.MapPost("/devices/{deviceId}/{operation}", RunLifecycleAsync).RequireAuthorization(IndustrialPolicies.Operator);
+        api.MapPost("/devices/{deviceId}/tick/{seconds:double}", Tick).RequireAuthorization(IndustrialPolicies.Operator);
+        api.MapPost("/devices/batch", RunBatchAsync).RequireAuthorization(IndustrialPolicies.Operator);
         api.MapGet("/devices/{deviceId}/state", (string deviceId, ISimulationRegistry registry) =>
             Results.Ok(registry.Get(deviceId).Host.State.Snapshot().ToDictionary(item => item.Key, item => item.Value?.Value)));
-        api.MapPut("/devices/{deviceId}/state/{dataPoint}", WriteState);
+        api.MapPut("/devices/{deviceId}/state/{dataPoint}", WriteState).RequireAuthorization(IndustrialPolicies.Operator);
         api.MapGet("/devices/{deviceId}/runtime", (string deviceId, ISimulationRegistry registry) => Results.Ok(Runtime(registry.Get(deviceId).Host)));
         api.MapGet("/devices/{deviceId}/events", (string deviceId, ISimulationRegistry registry) => Results.Ok(registry.Get(deviceId).Host.Events));
         api.MapGet("/devices/{deviceId}/faults", (string deviceId, ISimulationRegistry registry) => Results.Ok(registry.Get(deviceId).Host.FaultManager.ActiveFaults));
-        api.MapPost("/devices/{deviceId}/faults", ActivateFault);
+        api.MapPost("/devices/{deviceId}/faults", ActivateFault).RequireAuthorization(IndustrialPolicies.Operator);
         api.MapPost("/devices/{deviceId}/faults/{faultId}/recover", (string deviceId, string faultId, ISimulationRegistry registry) =>
             registry.Get(deviceId).Host.RecoverFault(faultId)
                 ? Results.Ok()
-                : IndustrialSimProblemDetails.Result(404, "Fault not found", $"Fault '{faultId}' is not active.", "faultNotFound"));
+                : IndustrialSimProblemDetails.Result(404, "Fault not found", $"Fault '{faultId}' is not active.", "faultNotFound"))
+            .RequireAuthorization(IndustrialPolicies.Operator);
 
         api.MapGet("/protocols", (ISimulationRegistry registry) => Results.Ok(registry.List().Select(summary =>
         {
@@ -54,14 +58,15 @@ public static class V1Endpoints
             await repository.FindAsync(scenarioId, token) is { } scenario
                 ? Results.Ok(scenario)
                 : IndustrialSimProblemDetails.Result(404, "Scenario not found", $"Scenario '{scenarioId}' was not found.", "scenarioNotFound"));
-        api.MapPut("/scenarios/{scenarioId}", UpsertScenarioAsync);
-        api.MapDelete("/scenarios/{scenarioId}", RemoveScenarioAsync);
-        api.MapPost("/devices/{deviceId}/scenarios/{scenarioId}/start", StartScenarioAsync);
-        api.MapPost("/devices/{deviceId}/scenario", RunInlineScenarioAsync);
+        api.MapPut("/scenarios/{scenarioId}", UpsertScenarioAsync).RequireAuthorization(IndustrialPolicies.Operator);
+        api.MapDelete("/scenarios/{scenarioId}", RemoveScenarioAsync).RequireAuthorization(IndustrialPolicies.Operator);
+        api.MapPost("/devices/{deviceId}/scenarios/{scenarioId}/start", StartScenarioAsync).RequireAuthorization(IndustrialPolicies.Operator);
+        api.MapPost("/devices/{deviceId}/scenario", RunInlineScenarioAsync).RequireAuthorization(IndustrialPolicies.Operator);
         api.MapDelete("/devices/{deviceId}/scenario", (string deviceId, ISimulationRegistry registry) =>
             registry.Get(deviceId).Host.StopScenario()
                 ? Results.Ok(new { running = false })
-                : IndustrialSimProblemDetails.Result(404, "Scenario not running", "No scenario is running.", "scenarioNotRunning"));
+                : IndustrialSimProblemDetails.Result(404, "Scenario not running", "No scenario is running.", "scenarioNotRunning"))
+            .RequireAuthorization(IndustrialPolicies.Operator);
 
         return endpoints;
     }
@@ -125,8 +130,16 @@ public static class V1Endpoints
         return Results.Ok(Runtime(registry.Get(deviceId).Host));
     }
 
-    private static async Task<IResult> RunBatchAsync(BatchLifecycleRequest request, ISimulationRegistry registry, CancellationToken cancellationToken)
+    private static async Task<IResult> RunBatchAsync(
+        BatchLifecycleRequest request,
+        ISimulationRegistry registry,
+        ClaimsPrincipal user,
+        IAuthorizationService authorization,
+        CancellationToken cancellationToken)
     {
+        if (request.Operation.Equals("remove", StringComparison.OrdinalIgnoreCase) &&
+            !(await authorization.AuthorizeAsync(user, IndustrialPolicies.Admin)).Succeeded)
+            return IndustrialSimProblemDetails.Result(403, "Forbidden", "Batch removal requires the Admin role.", "adminRoleRequired");
         var result = request.Operation.ToLowerInvariant() switch
         {
             "start" => await registry.StartManyAsync(request.DeviceIds, cancellationToken),
