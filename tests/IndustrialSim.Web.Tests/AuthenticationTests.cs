@@ -63,6 +63,8 @@ public sealed class AuthenticationTests
 
         fixture.Authorize(await fixture.LoginAsync("viewer", "Viewer!Pass123"));
         Assert.Equal(HttpStatusCode.OK, (await fixture.Client.GetAsync("/api/v1/devices/auth-device/state")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.GetAsync("/api/v1/templates")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await fixture.Client.PostAsJsonAsync("/api/v1/templates", new { })).StatusCode);
         var forbidden = await fixture.Client.PostAsync("/api/v1/devices/auth-device/start", null);
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
         Assert.Contains("forbidden", await forbidden.Content.ReadAsStringAsync(), StringComparison.Ordinal);

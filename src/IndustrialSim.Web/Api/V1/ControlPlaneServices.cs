@@ -1,5 +1,6 @@
 using IndustrialSim.Application.Catalogs;
 using IndustrialSim.Application.Security;
+using IndustrialSim.Application.Templates;
 using IndustrialSim.Hosting;
 using IndustrialSim.Persistence;
 using IndustrialSim.Persistence.Repositories;
@@ -27,6 +28,7 @@ public static class ControlPlaneServices
         services.AddScoped<IScenarioCatalogRepository, ScenarioCatalogRepository>();
         services.AddScoped<ISettingCatalogRepository, SettingCatalogRepository>();
         services.AddScoped<ISnapshotCatalogRepository, SnapshotCatalogRepository>();
+        services.AddScoped<ITemplateCatalogRepository, TemplateCatalogRepository>();
         services.AddSingleton(provider =>
         {
             var broker = new RuntimeStreamBroker();

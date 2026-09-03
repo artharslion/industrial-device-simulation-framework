@@ -21,6 +21,7 @@ public static class V1Endpoints
             scope.ServiceProvider.GetRequiredService<IndustrialSimDbContext>().Database.Migrate();
 
         var api = endpoints.MapGroup("/api/v1").WithTags("IndustrialSim v1").RequireAuthorization(IndustrialPolicies.Viewer);
+        api.MapVisualModelingEndpoints();
 
         api.MapGet("/devices", (ISimulationRegistry registry) => Results.Ok(registry.List()));
         api.MapGet("/devices/{deviceId}", (string deviceId, ISimulationRegistry registry) => Results.Ok(Summary(registry.Get(deviceId))));
@@ -193,7 +194,8 @@ public static class V1Endpoints
         CancellationToken cancellationToken)
     {
         _ = new ScenarioParser().Parse(request.Yaml);
-        await repository.UpsertAsync(new ScenarioCatalogItem(scenarioId, request.Name, request.Yaml, request.Version), cancellationToken);
+        _ = JsonDocument.Parse(request.EditorJson);
+        await repository.UpsertAsync(new ScenarioCatalogItem(scenarioId, request.Name, request.Yaml, request.Version, request.EditorJson), cancellationToken);
         await db.CommitAsync(cancellationToken);
         return Results.Ok(await repository.FindAsync(scenarioId, cancellationToken));
     }

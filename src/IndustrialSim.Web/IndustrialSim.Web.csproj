@@ -37,6 +37,7 @@
     <ProjectReference Include="..\IndustrialSim.Hosting\IndustrialSim.Hosting.csproj" />
     <ProjectReference Include="..\IndustrialSim.Application\IndustrialSim.Application.csproj" />
     <ProjectReference Include="..\IndustrialSim.Persistence\IndustrialSim.Persistence.csproj" />
+    <ProjectReference Include="..\IndustrialSim.Templates\IndustrialSim.Templates.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
   </ItemGroup>
   <ItemGroup>
