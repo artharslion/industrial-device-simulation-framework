@@ -6,6 +6,9 @@
 > `docs/plans/2026-09-02-protoforge-baseline-design.md` 和
 > `docs/plans/2026-09-02-protoforge-baseline-implementation-plan.md`。
 > 本文中关于“当前尚未完成 v0.1”的描述仅保留为历史分析，不再代表当前计划状态。
+> 2026-09-03 起，Wave 0/1 已正式授权多运行时注册、SQLite 控制面持久化、
+> `/api/v1`、SignalR、可选身份认证与 RBAC。Web 架构以现有 Vue 3、TypeScript、
+> Vite、Vitest 客户端为准；ProtoForge 是功能验收 baseline，不是源码或内部架构模板。
 
 ## 1. 文档目的
 
@@ -160,7 +163,7 @@ Protocol-specific Servers and Behaviors
 | 持久化 | 非 v0.1 核心能力 | SQLite 持久化设备、场景、模板、用户和测试 | 当前不应为追平平台而引入数据库 |
 | 日志与指标 | 规范要求结构化日志，当前能力仍基础 | 有日志总线、WebSocket 和 Prometheus 指标 | 应先补结构化事件流，再考虑指标系统 |
 | Docker 与演示 | v0.1 要求，但仓库尚未形成可运行交付 | 有 Dockerfile、Compose 和 demo 模式 | IndustrialSim 的 v0.1 发布阻塞项 |
-| 认证与多用户 | 明确属于 v0.1 非目标 | 有 JWT 和 RBAC | 不应纳入 IndustrialSim v0.1 |
+| 认证与多用户 | v0.1 非目标；Wave 1 已授权可选 Identity 与 RBAC | 有 JWT 和 RBAC | 以 IndustrialSim 自有边界实现，不复制源码 |
 | 数据转发、录制回放、Webhook | 不在 v0.1 范围 | 已提供相应平台能力 | 可进入后续路线，不应阻塞 MVP |
 
 ## 6. IndustrialSim 当前最需要补齐的部分
@@ -264,8 +267,8 @@ ProtoForge 已经具备源码启动、Docker 启动和 demo 模式。IndustrialS
 根据 IndustrialSim 的 v0.1 非目标和架构原则，以下 ProtoForge 能力不应成为近期追赶项：
 
 - 15 种协议的横向扩张；
-- JWT、RBAC 和多用户管理；
-- SQLite 作为运行时前置依赖；
+- ProtoForge 的具体认证、RBAC 或用户数据模型；IndustrialSim 使用自己的 ASP.NET Core Identity 边界；
+- SQLite 作为运行时状态权威或仿真启动的不可降级前置依赖；
 - 模板市场和复杂 CRUD 管理；
 - 数据转发、协议录制回放和第三方集成中心；
 - 将协议地址放入 Core Device/DataPoint 模型；

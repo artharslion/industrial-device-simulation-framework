@@ -69,6 +69,53 @@ Scenario
 State Changes
 ```
 
+## 2.2 Accepted v0.1 baseline
+
+The v0.1 MVP is accepted and complete. Its historical goals and non-goals in
+this document remain the contract for that release and must not be reinterpreted
+as unfinished platform work. Post-v0.1 changes extend the product around the
+existing deterministic runtime and must preserve the Pump dual-protocol and
+fault demonstration.
+
+## 2.3 Post-v0.1 platform foundation scope
+
+The next authorized platform phase adds a modular control plane without
+changing live-state ownership:
+
+- `IndustrialSim.Application` contains use cases and persistence-independent
+  contracts. It must not depend on ASP.NET Core, Vue, or EF Core.
+- `IndustrialSim.Persistence` implements control-plane repositories with EF
+  Core SQLite.
+- `IndustrialSim.Hosting` supervises multiple isolated `SimulationHost`
+  instances through a `SimulationRegistry`.
+- `IndustrialSim.Web` is the composition root for `/api/v1`, RFC Problem
+  Details, OpenAPI, optional authentication, SignalR, and the compiled Vue SPA.
+- `src/IndustrialSim.Web/ClientApp` remains Vue 3, TypeScript, Vite, and Vitest.
+
+This phase includes:
+
+1. Multi-device lifecycle and batch operations.
+2. Persistent device definitions, scenarios, settings, users, and explicit
+   versioned runtime snapshots.
+3. A versioned `/api/v1` control API while preserving `/api/*` for one
+   compatibility cycle.
+4. SignalR as the primary state/event stream with polling as a disconnect
+   fallback.
+5. Optional local authentication and `Admin`, `Operator`, and `Viewer` RBAC.
+6. A ProtoForge capability acceptance matrix backed by tests or explicit
+   interoperability evidence.
+
+SQLite is not a live datapoint store. Running state, clocks, active faults, and
+runtime transitions remain owned by each host's `StateStore` and runtime
+services. Database lock or unavailability may reject control-plane writes but
+must not replace, corrupt, or automatically stop an existing simulation.
+
+Templates, test-platform features, forwarding, Webhooks, recording/replay,
+additional protocols, and a multi-page console are planned later modules. This
+phase may define their interfaces or matrix ownership only; it must not
+implement MQTT, S7, BACnet, a template marketplace, test platform, forwarding,
+or recording/replay.
+
 ---
 
 # 3. Non-Goals
@@ -1879,37 +1926,40 @@ Unit / Protocol / E2E Tests
 ## v0.2
 
 ```text
-State Machine Extensions
-Seeded Replay
-Snapshot / Restore
-REST API
-Integration Test Helpers
-CI examples
+Wave 0: normative platform scope and ADRs
+Wave 1: Application/Persistence boundaries
+Multi-SimulationHost registry
+SQLite control-plane persistence
+Explicit snapshot/restore
+/api/v1 + Problem Details + OpenAPI
+SignalR state/event streaming
+Optional local identity and RBAC
+Vue 3 API/live-channel integration
 ```
 
 ## v0.3
 
 ```text
-MQTT
-S7
+Wave 2: templates, managed scenarios, and expanded Vue console
+Wave 3: user tests, observability, integrations, recording/replay, SDK
 ```
 
 ## v0.4
 
 ```text
-BACnet
-EtherNet/IP
+Wave 4: protocol batches gated by feasibility and interoperability evidence
+Versioned template catalog
 ```
 
 ## v1.0
 
 ```text
-Stable Plugin Architecture
-AAS/AID Integration
-Metrics
-Documentation
-Community Device Repository
+Wave 5: performance, reliability, security, packaging, and baseline release gate
 ```
+
+This roadmap supersedes the earlier protocol-first sequence. Protocol additions
+remain contingent on specification access, licensing, platform feasibility,
+capability manifests, and external interoperability evidence.
 
 ---
 

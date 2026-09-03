@@ -100,7 +100,7 @@ Browser / CLI / IndustrialSim.Client SDK
                   |
                   v
 IndustrialSim.Web
-  - Razor Components UI
+  - Vue 3 + TypeScript + Vite SPA
   - /api/v1 REST + OpenAPI
   - SignalR live streams
   - optional Identity/JWT boundary
@@ -139,7 +139,7 @@ Existing Runtime / StateStore / Scenario / Fault / Device Behavior
   `SimulationHost` instances. A host remains the unit of live runtime state.
 - `IndustrialSim.Application` owns use cases and catalog contracts. It can
   coordinate Hosting, Testing, Templates, and Integrations, but contains no EF
-  Core, HTTP, Razor, or concrete protocol types.
+  Core, HTTP, ASP.NET Core, Vue, or concrete protocol types.
 - `IndustrialSim.Persistence` implements application repositories with EF Core
   and SQLite. Persistence stores definitions, configuration, metadata,
   snapshots, reports, and settings; it does not become the live datapoint store.
@@ -152,7 +152,8 @@ Existing Runtime / StateStore / Scenario / Fault / Device Behavior
 - Each additional protocol stays in its own `IndustrialSim.Protocols.*`
   project and implements the existing protocol-neutral adapter contract.
 - `IndustrialSim.Web` becomes the composition root, versioned API, Identity
-  boundary, SignalR host, and Razor Components UI.
+  boundary, SignalR host, and static host for the Vue application in
+  `src/IndustrialSim.Web/ClientApp`.
 - `IndustrialSim.Client` is a typed .NET SDK generated or maintained against
   `/api/v1` OpenAPI contracts.
 
@@ -203,10 +204,19 @@ through the same application/runtime transition paths as live activity.
 
 ## Web and API design
 
-The current single-page embedded console is replaced incrementally with ASP.NET
-Core Razor Components. This avoids a second build toolchain and lets the Web
-project reuse .NET contracts. SignalR replaces polling for datapoint and log
-updates, with polling retained as a fallback.
+The accepted Web architecture is the existing Vue 3, TypeScript, Vite, and
+Vitest single-page application. The ASP.NET Core host serves its compiled
+assets and exposes typed JSON contracts; it does not render application HTML
+or move presentation state into server components. SignalR replaces polling as
+the primary channel for datapoint and log updates, with polling retained as a
+disconnect fallback. The Vue client owns presentation and interaction state
+only; `StateStore` and application-backed APIs remain authoritative.
+
+Vue Router is introduced when Wave 2 adds multiple console pages. Pinia is
+optional and should be added only when shared client-side presentation state
+outgrows composables. `@microsoft/signalr` is introduced in Wave 1 because it
+provides the supported reconnecting client for the server hub. Every added npm
+dependency must be locked in `package-lock.json`.
 
 The API is rooted at `/api/v1` and includes resource groups for protocols,
 devices, scenarios, templates, tests, logs, metrics, authentication, forwarding,
@@ -276,8 +286,8 @@ Implementation begins by adding these ADRs:
    introducing microservices.
 2. SQLite persists control-plane data; `StateStore` remains live-state
    authority.
-3. Razor Components and SignalR replace the embedded static console and polling
-   as the primary UI model.
+3. Vue 3, TypeScript, Vite, Vitest, and SignalR define the Web UI and primary
+   live-update model; polling remains a compatibility fallback.
 4. Templates separate device definitions from protocol mapping profiles.
 5. Protocol capability manifests and interoperability evidence gate release.
 6. Authentication is optional for trusted local mode and role-enforced when

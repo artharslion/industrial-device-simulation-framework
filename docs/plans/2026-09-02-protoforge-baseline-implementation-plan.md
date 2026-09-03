@@ -4,9 +4,9 @@
 
 **Goal:** Expand the completed IndustrialSim v0.1 runtime into a product platform that meets or exceeds ProtoForge's user-visible functional baseline while preserving unified runtime state, protocol-independent Core, deterministic execution, and first-class fault injection.
 
-**Architecture:** Build a modular monolith around the existing runtime. A new application/control plane manages many `SimulationHost` instances, SQLite-backed catalogs, templates, tests, integrations, identity, API, SignalR, and Razor Components; every protocol remains an isolated adapter over the same runtime contract.
+**Architecture:** Build a modular monolith around the existing runtime. A new application/control plane manages many `SimulationHost` instances, SQLite-backed catalogs, templates, tests, integrations, identity, API, SignalR, and the existing Vue 3 SPA; every protocol remains an isolated adapter over the same runtime contract.
 
-**Tech Stack:** .NET 10, C#, ASP.NET Core Minimal APIs and Razor Components, SignalR, ASP.NET Core Identity, EF Core SQLite, OpenAPI, OpenTelemetry/Prometheus, xUnit, Testcontainers where appropriate, Docker, and maintained protocol libraries selected through explicit feasibility gates.
+**Tech Stack:** .NET 10, C#, ASP.NET Core Minimal APIs, SignalR, ASP.NET Core Identity, EF Core SQLite, OpenAPI, Vue 3, TypeScript, Vite, Vitest, OpenTelemetry/Prometheus, xUnit, Testcontainers where appropriate, Docker, and maintained protocol libraries selected through explicit feasibility gates.
 
 ---
 
@@ -304,6 +304,11 @@ compatibility shims and add `Deprecation`/`Sunset` headers.
 Use bounded channels between runtime observers and SignalR. Coalesce repeated
 datapoint updates by device/datapoint when clients lag.
 
+Update `src/IndustrialSim.Web/ClientApp` to prefer `/api/v1` and
+`@microsoft/signalr`, while retaining the current `/api/*` polling client as a
+one-cycle fallback. Add Vitest coverage for ordered events, reconnect state,
+Problem Details errors, and polling fallback. Update `package-lock.json`.
+
 **Step 4: Run Web and integration tests**
 
 Expected: all API and live-stream tests pass.
@@ -452,26 +457,21 @@ git add src/IndustrialSim.Application src/IndustrialSim.Scenarios src/Industrial
 git commit -m "feat: manage and edit versioned scenarios"
 ```
 
-### Task 2.3: Replace the embedded console with Razor Components navigation
+### Task 2.3: Expand the Vue developer console navigation
 
 **Files:**
-- Create: `src/IndustrialSim.Web/Components/App.razor`
-- Create: `src/IndustrialSim.Web/Components/Layout/*.razor`
-- Create: `src/IndustrialSim.Web/Components/Pages/Dashboard.razor`
-- Create: `src/IndustrialSim.Web/Components/Pages/Devices.razor`
-- Create: `src/IndustrialSim.Web/Components/Pages/Protocols.razor`
-- Create: `src/IndustrialSim.Web/Components/Pages/Templates.razor`
-- Create: `src/IndustrialSim.Web/Components/Pages/Scenarios.razor`
-- Create: `src/IndustrialSim.Web/Components/Pages/ScenarioEditor.razor`
-- Create: `src/IndustrialSim.Web/Components/Pages/Testing.razor`
-- Create: `src/IndustrialSim.Web/Components/Pages/Integrations.razor`
-- Create: `src/IndustrialSim.Web/Components/Pages/Logs.razor`
-- Create: `src/IndustrialSim.Web/Components/Pages/Settings.razor`
+- Modify: `src/IndustrialSim.Web/ClientApp/package.json`
+- Modify: `src/IndustrialSim.Web/ClientApp/package-lock.json`
+- Create: `src/IndustrialSim.Web/ClientApp/src/router/*`
+- Create: `src/IndustrialSim.Web/ClientApp/src/views/*.vue`
+- Create: `src/IndustrialSim.Web/ClientApp/src/components/*`
+- Modify: `src/IndustrialSim.Web/ClientApp/src/App.vue`
 - Modify: `src/IndustrialSim.Web/Program.cs`
 - Retire after compatibility period: `src/IndustrialSim.Web/DeveloperConsolePage.cs`
-- Test: `tests/IndustrialSim.Web.Tests/NavigationComponentTests.cs`
+- Test: `src/IndustrialSim.Web/ClientApp/src/**/*.test.ts`
+- Test: `tests/IndustrialSim.Web.Tests/DeveloperConsoleTests.cs`
 
-**Step 1: Write failing component/navigation tests**
+**Step 1: Write failing Vue component/navigation tests**
 
 Assert every baseline page renders, handles loading/empty/error states, honors
 roles, and reconnects to SignalR after a transient disconnect.
@@ -480,10 +480,11 @@ roles, and reconnects to SignalR after a transient disconnect.
 
 Expected: FAIL because only the embedded page exists.
 
-**Step 3: Implement the shell and read-only pages first**
+**Step 3: Implement the Vue shell and read-only pages first**
 
-Use reusable status, table, event-stream, error-boundary, and confirmation
-components. Keep server state authoritative; the browser stores only UI state.
+Use Vue Router plus reusable status, table, event-stream, error-boundary, and
+confirmation components. Add Pinia only if shared presentation state requires
+it. Keep server state authoritative; the browser stores only UI state.
 
 **Step 4: Add mutation flows and run browser smoke tests**
 
@@ -497,12 +498,12 @@ git add src/IndustrialSim.Web tests
 git commit -m "feat: add full developer web console"
 ```
 
-### Task 2.4: Add visual scenario editing and template marketplace flows
+### Task 2.4: Add Vue scenario editing and template catalog flows
 
 **Files:**
-- Create: `src/IndustrialSim.Web/Components/ScenarioEditor/*.razor`
-- Create: `src/IndustrialSim.Web/Components/Templates/*.razor`
-- Create: `src/IndustrialSim.Web/wwwroot/js/scenario-editor.js`
+- Create: `src/IndustrialSim.Web/ClientApp/src/components/scenario-editor/*.vue`
+- Create: `src/IndustrialSim.Web/ClientApp/src/components/templates/*.vue`
+- Create: `src/IndustrialSim.Web/ClientApp/src/composables/useScenarioEditor.ts`
 - Test: `tests/IndustrialSim.Web.E2ETests/ScenarioEditorTests.cs`
 - Test: `tests/IndustrialSim.Web.E2ETests/TemplateMarketplaceTests.cs`
 
@@ -518,9 +519,9 @@ Expected: FAIL because the interactive flows do not exist.
 
 **Step 3: Implement keyboard-accessible editing**
 
-Use Razor Components for forms/state and a small JS/SVG canvas only for drag,
+Use Vue components for forms and interaction state with an SVG canvas for drag,
 pan, zoom, and edges. Preserve a form/list editing mode for accessibility and
-test reliability.
+test reliability. Runtime state continues to come from the API and SignalR.
 
 **Step 4: Run E2E and scenario round-trip tests**
 
@@ -529,7 +530,7 @@ Expected: PASS; graph layout changes do not alter Scenario AST semantics.
 **Step 5: Commit**
 
 ```powershell
-git add src/IndustrialSim.Web tests/IndustrialSim.Web.E2ETests
+git add src/IndustrialSim.Web/ClientApp tests/IndustrialSim.Web.E2ETests
 git commit -m "feat: add scenario editor and template marketplace"
 ```
 
