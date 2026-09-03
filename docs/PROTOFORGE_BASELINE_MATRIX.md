@@ -16,8 +16,8 @@ Statuses are `Not Started`, `In Progress`, `Verified`, and `Constrained`.
 |---|---|---:|---|---|
 | devices: multi-device lifecycle and batch operations | Hosting / Application | 1 | `SimulationRegistryTests` and `V1ApiContractTests` | Verified |
 | protocols: catalog, mappings, supervision, and status | Hosting / Protocols | 1, 4 | API tests plus per-protocol capability manifests and interoperability records | In Progress |
-| templates: versioned definitions and mapping profiles | Templates | 2, 4 | Catalog validation and instantiation tests | Not Started |
-| scenarios: persisted CRUD and runtime lifecycle | Application / Scenarios | 1, 2 | Persistence, API, parser, scheduler, and deterministic execution tests | In Progress |
+| templates: versioned definitions and mapping profiles | Templates | 2, 4 | `TemplateCatalogTests`, `TemplatePersistenceTests`, and `VisualModelingApiTests` | Verified |
+| scenarios: persisted CRUD and runtime lifecycle | Application / Scenarios | 1, 2 | `ScenarioParserTests`, `VisualModelingApiTests`, and Vue editor tests | Verified |
 | testing: user cases, suites, assertions, and reports | Testing | 3 | Domain, execution, API, and report tests | Not Started |
 | forwarding: bounded delivery targets | Integrations | 3 | Outage, retry, backpressure, and runtime-isolation tests | Not Started |
 | recording: semantic capture and replay | Integrations | 3 | Ordered deterministic replay and storage-failure tests | Not Started |
@@ -26,7 +26,7 @@ Statuses are `Not Started`, `In Progress`, `Verified`, and `Constrained`.
 | authentication: optional identity and RBAC | Web / Persistence | 1 | `AuthenticationTests`: disabled/local modes, bootstrap, login, password, users, roles, and secret exclusion | Verified |
 | settings: persisted non-secret control-plane settings | Application / Persistence | 1, 5 | Restart, validation, and secret-exclusion tests | In Progress |
 | sdk: typed .NET client | Client | 3 | OpenAPI contract and in-memory-host tests | Not Started |
-| Vue developer console | Web ClientApp | 1, 2 | Vitest, typecheck, production build, and browser evidence | In Progress |
+| Vue developer console | Web ClientApp | 1, 2 | Vitest, typecheck, production build, and desktop/mobile browser evidence | Verified |
 | OpenAPI and RFC Problem Details | Web | 1 | `V1ApiContractTests` and `AuthenticationTests` with stable `errorCode` values | Verified |
 | SignalR state and log streaming | Web / ClientApp | 1 | `RuntimeHubTests`, `useRuntimeSignalR.test.ts`, and polling-fallback tests | Verified |
 
@@ -59,3 +59,15 @@ snapshots, `/api/v1`, Problem Details, OpenAPI, SignalR ordering/reconnect/
 backpressure, optional authentication, user management, RBAC, secret exclusion,
 and Vue fallback behavior while all v0.1 protocol and deterministic tests remain
 green.
+
+## Wave 2 visual modeling release gate
+
+Wave 2 visual modeling is accepted when immutable local template versions and
+separate mapping profiles persist across restart; templates instantiate normal
+SimulationHosts; scenario YAML and editor metadata round trip independently;
+and the Vue console exposes addressable Overview, Devices, Templates,
+Scenarios, Protocols, Events, Users, and Settings pages. Desktop and 390px
+browser inspection must show no rendering errors or horizontal page overflow.
+
+This gate does not include a template marketplace, automated test-report
+platform, forwarding, Webhooks, recording/replay, or additional protocols.

@@ -519,9 +519,10 @@ Expected: FAIL because the interactive flows do not exist.
 
 **Step 3: Implement keyboard-accessible editing**
 
-Use Vue components for forms and interaction state with an SVG canvas for drag,
-pan, zoom, and edges. Preserve a form/list editing mode for accessibility and
-test reliability. Runtime state continues to come from the API and SignalR.
+Use Vue components for forms and interaction state with an ordered visual flow
+rail and explicit move controls. Preserve native form controls for keyboard
+accessibility and test reliability. Runtime state continues to come from the
+API and SignalR.
 
 **Step 4: Run E2E and scenario round-trip tests**
 

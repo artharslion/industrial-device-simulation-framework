@@ -44,4 +44,15 @@ public sealed class DocumentationContractTests
         Assert.Contains("local template catalog", plan, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("TemplateMarketplaceTests", plan, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Visual_modeling_wave_has_verified_acceptance_evidence()
+    {
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var matrix = File.ReadAllText(Path.Combine(root, "docs", "PROTOFORGE_BASELINE_MATRIX.md"));
+
+        Assert.Contains("TemplateCatalogTests`, `TemplatePersistenceTests`, and `VisualModelingApiTests` | Verified", matrix, StringComparison.Ordinal);
+        Assert.Contains("ScenarioParserTests`, `VisualModelingApiTests`, and Vue editor tests | Verified", matrix, StringComparison.Ordinal);
+        Assert.Contains("Vitest, typecheck, production build, and desktop/mobile browser evidence | Verified", matrix, StringComparison.Ordinal);
+    }
 }
