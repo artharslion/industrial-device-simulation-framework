@@ -29,6 +29,13 @@ public sealed class DeterministicClock : ISimulationClock
     {
         lock (_gate) _elapsed = TimeSpan.Zero;
     }
+
+    public void Restore(TimeSpan elapsed)
+    {
+        if (elapsed < TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(elapsed), "Clock cannot be restored to a negative time.");
+        lock (_gate) _elapsed = elapsed;
+    }
 }
 
 public sealed class RealTimeClock : ISimulationClock

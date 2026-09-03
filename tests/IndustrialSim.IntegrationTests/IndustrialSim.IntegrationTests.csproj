@@ -19,6 +19,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\src\IndustrialSim.Hosting\IndustrialSim.Hosting.csproj" />
     <ProjectReference Include="..\..\src\IndustrialSim.Application\IndustrialSim.Application.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Persistence\IndustrialSim.Persistence.csproj" />
     <ProjectReference Include="..\..\src\IndustrialSim.Web\IndustrialSim.Web.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>

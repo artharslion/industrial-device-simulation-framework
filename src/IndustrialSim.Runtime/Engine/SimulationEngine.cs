@@ -47,6 +47,13 @@ public sealed class SimulationEngine
         lock (_gate) _callbacks.Clear();
     }
 
+    public void RestoreTime(TimeSpan elapsed)
+    {
+        if (_clock is not DeterministicClock deterministic)
+            throw new InvalidOperationException("Only deterministic simulation time can be restored explicitly.");
+        deterministic.Restore(elapsed);
+    }
+
     public void Schedule(SimulationTime dueTime, Action callback)
     {
         ArgumentNullException.ThrowIfNull(callback);
