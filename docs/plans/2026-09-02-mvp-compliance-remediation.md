@@ -1,10 +1,10 @@
 # MVP Compliance Remediation Implementation Plan
 
 **Completion status (2026-09-02):** Tasks 1-10 are implemented and committed.
-The .NET Release gate and Compose configuration validation pass. Docker image
-build/live container verification remains unexecuted only because the local
-Docker Desktop daemon was unavailable; local Release-host HTTP and protocol
-port smoke verification passed. Detailed evidence is recorded in
+The .NET Release gate, Compose configuration validation, Docker image build,
+and live container verification pass. HTTP lifecycle operations, a Modbus
+function 03 request, and an OPC UA TCP HEL/ACK handshake were verified against
+the Compose container. Detailed evidence is recorded in
 `docs/review-current-implementation.md`.
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.

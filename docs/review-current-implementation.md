@@ -27,16 +27,20 @@ dotnet build IndustrialSim.sln -c Release --no-restore  PASS (0 warnings, 0 erro
 dotnet test IndustrialSim.sln -c Release --no-build     PASS (127 tests)
 git diff --check                                        PASS
 docker compose config                                   PASS
+docker compose build                                    PASS
+docker compose up -d                                    PASS
 ```
 
 The Release Web build was also started locally on alternate ports. HTTP
 returned 200 with the developer console, a Scenario changed Pump state, and
 TCP connections succeeded to the live OPC UA and Modbus listeners.
 
-Docker image build and container live verification were not run because the
-Docker Desktop Linux daemon was unavailable on this workstation
-(`dockerDesktopLinuxEngine` named pipe missing). This is an environment
-limitation, not a known repository failure; `docker compose config` passed.
+Docker image build and live container verification were completed on
+2026-09-03 after the Docker Desktop Linux daemon became available. The
+`industrial-sim:local` image built successfully, the Compose service remained
+running with ports 4840, 5020, and 8080 published, HTTP runtime lifecycle
+operations succeeded, a Modbus function 03 request returned the mapped speed
+register, and an OPC UA TCP HEL handshake received ACK.
 
 ## Resolution Status (2026-09-01)
 
