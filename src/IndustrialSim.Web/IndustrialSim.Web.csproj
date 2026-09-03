@@ -4,7 +4,34 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <ClientAppRoot>$(MSBuildProjectDirectory)\ClientApp\</ClientAppRoot>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ClientAppSource Include="$(ClientAppRoot)src\**\*;$(ClientAppRoot)index.html;$(ClientAppRoot)package.json;$(ClientAppRoot)package-lock.json;$(ClientAppRoot)tsconfig.json;$(ClientAppRoot)vite.config.ts" />
+    <Content Remove="wwwroot\index.html;wwwroot\assets\app.js;wwwroot\assets\index.css" />
+    <Content Include="wwwroot\index.html"
+             Link="wwwroot\index.html"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot\assets\app.js"
+             Link="wwwroot\assets\app.js"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="wwwroot\assets\index.css"
+             Link="wwwroot\assets\index.css"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="BuildClientApp"
+          BeforeTargets="PrepareForBuild"
+          Condition="'$(SkipClientBuild)' != 'true'"
+          Inputs="@(ClientAppSource)"
+          Outputs="$(MSBuildProjectDirectory)\wwwroot\index.html">
+    <Exec Command="npm ci" WorkingDirectory="$(ClientAppRoot)" />
+    <Exec Command="npm run build" WorkingDirectory="$(ClientAppRoot)" />
+  </Target>
 
   <ItemGroup>
     <ProjectReference Include="..\IndustrialSim.Hosting\IndustrialSim.Hosting.csproj" />

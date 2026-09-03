@@ -19,5 +19,10 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup><ProjectReference Include="..\..\src\IndustrialSim.Web\IndustrialSim.Web.csproj" /></ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\src\IndustrialSim.Web\wwwroot\index.html" Link="wwwroot\index.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\src\IndustrialSim.Web\wwwroot\assets\app.js" Link="wwwroot\assets\app.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\src\IndustrialSim.Web\wwwroot\assets\index.css" Link="wwwroot\assets\index.css" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 
 </Project>

@@ -5,8 +5,9 @@
 The v0.1 Web UI remains an operational developer console, not a factory
 management product. The redesign adopts Linear's restrained desktop-product
 qualities—high information density, quiet surfaces, precise borders, and one
-clear accent color—without copying its brand or introducing a frontend
-framework.
+clear accent color—without copying its brand. The console is implemented as a
+Vue 3, Vite, and TypeScript application served by the existing ASP.NET Core
+host.
 
 ## Structure
 
@@ -29,11 +30,12 @@ dark and low-contrast, with violet reserved for selection and primary action.
 
 ## Interaction and Safety
 
-Existing API routes and operation element IDs remain unchanged. Runtime data
-continues to render through `createElement`, `textContent`, and
-`replaceChildren`; no API-provided content is inserted as HTML. Focus-visible
-styles, live regions, disabled states, reduced-motion support, and responsive
-breakpoints are part of the base design system.
+Existing API routes remain unchanged. Runtime data renders through Vue text
+bindings; no API-provided content is inserted as raw HTML. Focus-visible styles,
+live regions, disabled states, reduced-motion support, and responsive
+breakpoints are part of the base design system. Native semantic controls and
+small local components are preferred over a general UI kit so the console
+retains its visual identity and a small production bundle.
 
 ## Verification
 

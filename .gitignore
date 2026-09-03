@@ -19,3 +19,8 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Frontend dependencies and generated assets
+**/node_modules/
+src/IndustrialSim.Web/ClientApp/dist/
+src/IndustrialSim.Web/wwwroot/

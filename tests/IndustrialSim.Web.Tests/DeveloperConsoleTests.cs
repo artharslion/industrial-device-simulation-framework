@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.RegularExpressions;
 
 namespace IndustrialSim.Web.Tests;
 
@@ -29,13 +30,14 @@ public sealed class DeveloperConsoleTests
         var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
         using var client = new HttpClient { BaseAddress = new Uri(address) };
         var html = await client.GetStringAsync("/");
-        Assert.Contains("Industrial Device Simulation", html, StringComparison.Ordinal);
-        Assert.Contains("Scenario", html, StringComparison.Ordinal);
-        Assert.Contains("Fault", html, StringComparison.Ordinal);
-        Assert.Contains("Paused", html, StringComparison.Ordinal);
-        Assert.Contains("validation-error", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("innerHTML=", html, StringComparison.Ordinal);
-        Assert.Contains("createElement", html, StringComparison.Ordinal);
+        Assert.Contains("<div id=\"app\"></div>", html, StringComparison.Ordinal);
+        var scriptPath = Regex.Match(html, "src=\"(?<path>/assets/[^\"]+\\.js)\"").Groups["path"].Value;
+        Assert.NotEmpty(scriptPath);
+        var script = await client.GetStringAsync(scriptPath);
+        Assert.Contains("Industrial Device Simulation", script, StringComparison.Ordinal);
+        Assert.Contains("Scenario control", script, StringComparison.Ordinal);
+        Assert.Contains("Fault control", script, StringComparison.Ordinal);
+        Assert.Contains("validation-error", script, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -56,9 +58,12 @@ public sealed class DeveloperConsoleTests
 
         var html = await client.GetStringAsync("/");
 
-        Assert.Contains("workspace-sidebar", html, StringComparison.Ordinal);
-        Assert.Contains("workspace-header", html, StringComparison.Ordinal);
-        Assert.Contains("command-center", html, StringComparison.Ordinal);
-        Assert.Contains("aria-live=\"polite\"", html, StringComparison.Ordinal);
+        var stylePath = Regex.Match(html, "href=\"(?<path>/assets/[^\"]+\\.css)\"").Groups["path"].Value;
+        Assert.NotEmpty(stylePath);
+        var style = await client.GetStringAsync(stylePath);
+        Assert.Contains(".workspace-sidebar", style, StringComparison.Ordinal);
+        Assert.Contains(".workspace-header", style, StringComparison.Ordinal);
+        Assert.Contains(".command-center", style, StringComparison.Ordinal);
+        Assert.Contains("@media", style, StringComparison.Ordinal);
     }
 }

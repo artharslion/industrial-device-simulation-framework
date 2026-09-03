@@ -1,8 +1,16 @@
+FROM node:22-alpine AS client-build
+WORKDIR /src/src/IndustrialSim.Web/ClientApp
+COPY src/IndustrialSim.Web/ClientApp/package.json src/IndustrialSim.Web/ClientApp/package-lock.json ./
+RUN npm ci
+COPY src/IndustrialSim.Web/ClientApp/ ./
+RUN npm run build
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY . .
+COPY --from=client-build /src/src/IndustrialSim.Web/wwwroot ./src/IndustrialSim.Web/wwwroot
 RUN dotnet restore IndustrialSim.sln
-RUN dotnet publish src/IndustrialSim.Web/IndustrialSim.Web.csproj --configuration Release --no-restore --output /out
+RUN dotnet publish src/IndustrialSim.Web/IndustrialSim.Web.csproj --configuration Release --no-restore --output /out -p:SkipClientBuild=true
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
