@@ -2,4 +2,7 @@
   <PropertyGroup>
     <Description>Protocol- and transport-independent platform use cases and contracts.</Description>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../IndustrialSim.Hosting/IndustrialSim.Hosting.csproj" />
+  </ItemGroup>
 </Project>
