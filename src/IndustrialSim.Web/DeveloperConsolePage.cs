@@ -14,123 +14,178 @@ public static class DeveloperConsolePage
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
   <title>Industrial Device Simulation</title>
   <style>
-    :root { --ink:#090d0d; --panel:#111817; --panel2:#17211f; --line:#30413d; --muted:#8ba09a; --text:#e8f0ed; --amber:#ffb547; --cyan:#58e1d2; --red:#ff6b62; --green:#7fda8b; --shadow:0 18px 60px rgba(0,0,0,.38); }
+    :root {
+      --canvas:#08090a; --sidebar:#0c0c0e; --surface:#101012; --surface-raised:#141416; --surface-hover:#19191c;
+      --line:#242428; --line-strong:#313137; --text:#f1f1f3; --text-secondary:#a2a2aa; --text-tertiary:#686870;
+      --accent:#8b7cf6; --accent-soft:rgba(139,124,246,.13); --green:#5bc98c; --amber:#e6b566; --red:#ed6a78;
+      --red-soft:rgba(237,106,120,.12); --radius:8px; --shadow:0 18px 60px rgba(0,0,0,.28);
+    }
     * { box-sizing:border-box; }
-    body { margin:0; color:var(--text); background:var(--ink); font-family:"Bahnschrift","DIN Alternate","Trebuchet MS",sans-serif; min-height:100vh; }
-    body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.17; background-image:linear-gradient(rgba(88,225,210,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(88,225,210,.12) 1px,transparent 1px); background-size:42px 42px; mask-image:linear-gradient(to bottom,black,transparent 85%); }
-    .shell { width:min(1500px,calc(100% - 32px)); margin:0 auto; padding:28px 0 48px; position:relative; }
-    header { display:grid; grid-template-columns:1fr auto; align-items:end; gap:24px; padding:4px 0 22px; border-bottom:1px solid var(--line); }
-    .kicker { color:var(--amber); letter-spacing:.22em; text-transform:uppercase; font:600 12px "Cascadia Mono",monospace; }
-    h1 { margin:7px 0 0; font-size:clamp(28px,4vw,56px); line-height:.95; letter-spacing:-.045em; font-weight:750; }
-    .identity { text-align:right; color:var(--muted); font:13px "Cascadia Mono",monospace; }
-    .identity strong { display:block; color:var(--text); font-size:16px; margin-bottom:4px; }
-    .status-rail { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:18px 0; }
-    .status { background:linear-gradient(145deg,var(--panel2),var(--panel)); border:1px solid var(--line); padding:13px 15px; box-shadow:var(--shadow); }
-    .status span { color:var(--muted); text-transform:uppercase; letter-spacing:.13em; font:10px "Cascadia Mono",monospace; }
-    .status strong { display:block; margin-top:7px; font:700 17px "Cascadia Mono",monospace; }
-    .lamp { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px; background:var(--muted); box-shadow:0 0 0 3px rgba(139,160,154,.1); }
-    .lamp.running,.lamp.active { background:var(--green); box-shadow:0 0 15px rgba(127,218,139,.8); }
-    .lamp.paused { background:var(--amber); box-shadow:0 0 15px rgba(255,181,71,.8); }
-    .lamp.stopped,.lamp.error { background:var(--red); box-shadow:0 0 15px rgba(255,107,98,.65); }
-    main { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(330px,.8fr); gap:16px; align-items:start; }
-    .stack { display:grid; gap:16px; }
-    .panel { background:rgba(17,24,23,.94); border:1px solid var(--line); box-shadow:var(--shadow); overflow:hidden; }
-    .panel-head { display:flex; justify-content:space-between; align-items:center; padding:13px 16px; border-bottom:1px solid var(--line); background:rgba(23,33,31,.88); }
-    .panel-head h2 { margin:0; text-transform:uppercase; letter-spacing:.14em; font-size:12px; }
-    .panel-head small { color:var(--muted); font:11px "Cascadia Mono",monospace; }
-    .panel-body { padding:16px; }
-    table { width:100%; border-collapse:collapse; font:13px "Cascadia Mono",monospace; }
-    th { color:var(--muted); font-weight:500; text-transform:uppercase; letter-spacing:.1em; font-size:10px; text-align:left; padding:0 10px 10px; }
-    td { padding:11px 10px; border-top:1px solid rgba(48,65,61,.65); }
-    td:last-child { text-align:right; color:var(--cyan); }
-    .controls { display:flex; flex-wrap:wrap; gap:8px; }
-    button { appearance:none; border:1px solid var(--line); background:#1b2724; color:var(--text); padding:10px 13px; font:700 11px "Cascadia Mono",monospace; text-transform:uppercase; letter-spacing:.08em; cursor:pointer; transition:.16s ease; }
-    button:hover { border-color:var(--cyan); color:var(--cyan); transform:translateY(-1px); }
-    button.primary { background:var(--amber); color:#17110a; border-color:var(--amber); }
-    button.danger { border-color:#713b38; color:#ff9c96; }
-    textarea,input,select { width:100%; border:1px solid var(--line); background:#0b1110; color:var(--text); padding:10px 11px; font:12px/1.55 "Cascadia Mono",monospace; outline:none; }
-    textarea:focus,input:focus,select:focus { border-color:var(--cyan); box-shadow:0 0 0 2px rgba(88,225,210,.1); }
-    textarea { min-height:210px; resize:vertical; }
-    label { display:block; color:var(--muted); text-transform:uppercase; letter-spacing:.1em; font:10px "Cascadia Mono",monospace; margin:0 0 6px; }
-    .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    .form-grid .wide { grid-column:1/-1; }
-    .terminal { min-height:270px; max-height:420px; overflow:auto; background:#070a0a; padding:13px; font:11px/1.6 "Cascadia Mono",monospace; color:#b9c8c4; white-space:pre-wrap; }
-    .fault-list { display:grid; gap:8px; margin-top:12px; }
-    .fault-row { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; border-left:3px solid var(--red); padding:8px 10px; background:#161c1b; font:11px "Cascadia Mono",monospace; }
-    #validation-error { display:none; position:sticky; top:10px; z-index:4; margin:0 0 12px; padding:11px 14px; border:1px solid #8a3b37; background:#341d1b; color:#ffd1ce; font:12px "Cascadia Mono",monospace; }
-    #validation-error.visible { display:block; }
-    .hint { color:var(--muted); font-size:12px; line-height:1.5; }
-    @media(max-width:900px){ main{grid-template-columns:1fr}.status-rail{grid-template-columns:1fr 1fr}header{grid-template-columns:1fr}.identity{text-align:left}.form-grid{grid-template-columns:1fr}.form-grid .wide{grid-column:auto} }
-    @media(prefers-reduced-motion:reduce){ *{transition:none!important} }
+    html { scroll-behavior:smooth; }
+    body { margin:0; min-height:100vh; color:var(--text); background:var(--canvas); font-family:"IBM Plex Sans","Aptos","Segoe UI",sans-serif; font-size:14px; -webkit-font-smoothing:antialiased; }
+    button,input,select,textarea { font:inherit; }
+    button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+    .app-shell { display:grid; grid-template-columns:232px minmax(0,1fr); min-height:100vh; }
+    .workspace-sidebar { position:sticky; top:0; z-index:5; display:flex; flex-direction:column; height:100vh; padding:14px 12px; background:var(--sidebar); border-right:1px solid var(--line); }
+    .brand { display:flex; align-items:center; gap:10px; padding:7px 8px 18px; }
+    .brand-mark { display:grid; place-items:center; width:28px; height:28px; border:1px solid #6f62d9; border-radius:7px; background:linear-gradient(145deg,#9d91ff,#6656d9); color:white; font:700 13px "Cascadia Mono",monospace; box-shadow:0 0 0 4px rgba(139,124,246,.08); }
+    .brand-copy strong { display:block; font-size:13px; letter-spacing:-.01em; }
+    .brand-copy span { display:block; margin-top:2px; color:var(--text-tertiary); font-size:11px; }
+    .sidebar-label { padding:13px 9px 7px; color:var(--text-tertiary); font-size:10px; font-weight:650; letter-spacing:.09em; text-transform:uppercase; }
+    .sidebar-nav { display:grid; gap:2px; }
+    .nav-item { display:flex; align-items:center; gap:10px; min-height:34px; padding:0 9px; border:1px solid transparent; border-radius:6px; color:var(--text-secondary); text-decoration:none; font-size:13px; transition:background .15s ease,color .15s ease,border-color .15s ease; }
+    .nav-item::before { content:""; width:6px; height:6px; border:1px solid currentColor; border-radius:2px; opacity:.72; }
+    .nav-item:hover { color:var(--text); background:var(--surface-hover); }
+    .nav-item.active { color:var(--text); background:var(--accent-soft); border-color:rgba(139,124,246,.18); }
+    .nav-item.active::before { background:var(--accent); border-color:var(--accent); box-shadow:0 0 8px rgba(139,124,246,.55); }
+    .sidebar-spacer { flex:1; }
+    .environment-card { margin:8px 2px 2px; padding:11px; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); }
+    .environment-card span { display:block; color:var(--text-tertiary); font-size:10px; text-transform:uppercase; letter-spacing:.08em; }
+    .environment-card strong { display:block; overflow:hidden; margin-top:6px; font-size:12px; font-weight:550; text-overflow:ellipsis; white-space:nowrap; }
+    .environment-card small { display:block; margin-top:4px; color:var(--text-secondary); font:10px "Cascadia Mono",monospace; }
+    .command-center { min-width:0; }
+    .workspace-header { position:sticky; top:0; z-index:4; display:flex; align-items:center; justify-content:space-between; min-height:57px; padding:0 28px; border-bottom:1px solid var(--line); background:rgba(8,9,10,.86); backdrop-filter:blur(18px); }
+    .breadcrumb { display:flex; align-items:center; gap:8px; color:var(--text-tertiary); font-size:12px; }
+    .breadcrumb strong { color:var(--text-secondary); font-weight:550; }
+    .breadcrumb .slash { color:#3d3d43; }
+    .header-meta { display:flex; align-items:center; gap:9px; color:var(--text-tertiary); font:10px "Cascadia Mono",monospace; }
+    .sync-dot { width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 8px rgba(91,201,140,.7); }
+    .content { width:min(1480px,100%); margin:0 auto; padding:28px; }
+    .page-intro { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin-bottom:24px; }
+    .eyebrow { margin-bottom:7px; color:var(--accent); font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
+    h1 { margin:0; font-size:25px; line-height:1.2; letter-spacing:-.035em; font-weight:630; }
+    .page-intro p { max-width:620px; margin:8px 0 0; color:var(--text-secondary); font-size:13px; line-height:1.55; }
+    .device-chip { display:flex; align-items:center; gap:9px; min-width:190px; padding:9px 11px; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); }
+    .device-glyph { display:grid; place-items:center; width:28px; height:28px; border-radius:6px; background:var(--accent-soft); color:#b8afff; font:700 11px "Cascadia Mono",monospace; }
+    .device-chip strong { display:block; font-size:12px; font-weight:600; }
+    .device-chip span { display:block; margin-top:2px; color:var(--text-tertiary); font-size:10px; }
+    .status-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-bottom:16px; }
+    .status-card { min-width:0; padding:13px 14px; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); }
+    .status-card-label { display:flex; align-items:center; justify-content:space-between; gap:8px; color:var(--text-tertiary); font-size:10px; font-weight:650; letter-spacing:.07em; text-transform:uppercase; }
+    .status-card strong { display:block; overflow:hidden; margin-top:8px; color:var(--text); font-size:13px; font-weight:560; text-overflow:ellipsis; white-space:nowrap; }
+    .lamp { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--text-tertiary); }
+    .lamp.running,.lamp.active { background:var(--green); box-shadow:0 0 8px rgba(91,201,140,.58); }
+    .lamp.paused { background:var(--amber); box-shadow:0 0 8px rgba(230,181,102,.5); }
+    .lamp.stopped,.lamp.error { background:var(--red); box-shadow:0 0 8px rgba(237,106,120,.45); }
+    .lamp.idle { background:var(--text-tertiary); box-shadow:none; }
+    .dashboard-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:12px; align-items:start; }
+    .panel { min-width:0; overflow:hidden; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); box-shadow:var(--shadow); }
+    .state-panel { grid-column:span 7; } .runtime-panel { grid-column:span 5; } .events-panel { grid-column:span 7; } .scenario-panel { grid-column:span 5; } .fault-panel { grid-column:8 / span 5; }
+    .panel-head { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:46px; padding:0 15px; border-bottom:1px solid var(--line); }
+    .panel-title { display:flex; align-items:center; gap:9px; min-width:0; }
+    .panel-icon { width:7px; height:7px; border:1px solid var(--text-tertiary); border-radius:2px; transform:rotate(45deg); }
+    .panel-head h2 { margin:0; font-size:12px; font-weight:600; letter-spacing:-.01em; }
+    .panel-head small { overflow:hidden; color:var(--text-tertiary); font:10px "Cascadia Mono",monospace; text-overflow:ellipsis; white-space:nowrap; }
+    .panel-body { padding:15px; }
+    table { width:100%; border-collapse:collapse; table-layout:fixed; }
+    th { padding:0 11px 9px; color:var(--text-tertiary); font-size:10px; font-weight:650; letter-spacing:.07em; text-align:left; text-transform:uppercase; }
+    th:last-child,td:last-child { text-align:right; }
+    td { height:42px; padding:0 11px; border-top:1px solid var(--line); color:var(--text-secondary); font-size:12px; }
+    td:first-child { color:var(--text); font-weight:520; }
+    td code { color:#c8c3ff; font:11px "Cascadia Mono",monospace; }
+    .type-badge { display:inline-flex; padding:2px 6px; border:1px solid var(--line); border-radius:4px; color:var(--text-tertiary); font:9px "Cascadia Mono",monospace; text-transform:uppercase; }
+    .controls { display:flex; flex-wrap:wrap; gap:7px; }
+    button { appearance:none; min-height:32px; padding:0 11px; border:1px solid var(--line-strong); border-radius:6px; background:var(--surface-raised); color:var(--text-secondary); font-size:11px; font-weight:600; cursor:pointer; transition:background .14s ease,border-color .14s ease,color .14s ease,transform .14s ease; }
+    button:hover:not(:disabled) { border-color:#46464d; background:var(--surface-hover); color:var(--text); transform:translateY(-1px); }
+    button.primary { border-color:#7768e8; background:#7365df; color:white; box-shadow:0 3px 12px rgba(83,68,196,.25); }
+    button.primary:hover:not(:disabled) { border-color:#9588ff; background:#8072eb; }
+    button.danger { border-color:rgba(237,106,120,.27); background:var(--red-soft); color:#f18d98; }
+    button:disabled { opacity:.38; cursor:not-allowed; }
+    .runtime-copy { margin:0 0 13px; color:var(--text-secondary); font-size:12px; line-height:1.55; }
+    textarea,input,select { width:100%; border:1px solid var(--line-strong); border-radius:6px; background:#0b0b0d; color:var(--text); outline:none; transition:border-color .14s ease,box-shadow .14s ease; }
+    textarea:focus,input:focus,select:focus { border-color:#6558c7; box-shadow:0 0 0 3px rgba(139,124,246,.09); }
+    input,select { height:34px; padding:0 10px; font-size:12px; }
+    textarea { min-height:210px; padding:11px; resize:vertical; font:11px/1.65 "Cascadia Mono",monospace; tab-size:2; }
+    label { display:block; margin:0 0 6px; color:var(--text-secondary); font-size:10px; font-weight:600; }
+    .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:11px; } .form-grid .wide { grid-column:1/-1; } .action-row { margin-top:10px; }
+    .event-terminal { min-height:290px; max-height:410px; overflow:auto; background:#0b0b0d; }
+    .event-row { display:grid; grid-template-columns:70px minmax(105px,.55fr) minmax(0,1.45fr); gap:12px; align-items:start; padding:9px 14px; border-bottom:1px solid rgba(36,36,40,.72); font:10px/1.55 "Cascadia Mono",monospace; }
+    .event-row:hover { background:rgba(255,255,255,.018); } .event-time { color:var(--text-tertiary); } .event-type { overflow:hidden; color:#aca3ff; text-overflow:ellipsis; white-space:nowrap; } .event-data { overflow-wrap:anywhere; color:var(--text-secondary); }
+    .event-empty { padding:42px 16px; color:var(--text-tertiary); font-size:12px; text-align:center; }
+    .fault-list { display:grid; gap:7px; margin-top:13px; }
+    .fault-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; padding:8px 9px; border:1px solid rgba(237,106,120,.18); border-radius:6px; background:var(--red-soft); }
+    .fault-row span { overflow:hidden; color:#e9a1a9; font:10px "Cascadia Mono",monospace; text-overflow:ellipsis; white-space:nowrap; }
+    .hint { padding:9px 0; color:var(--text-tertiary); font-size:11px; }
+    #validation-error { display:none; position:fixed; top:70px; right:24px; z-index:20; width:min(420px,calc(100% - 48px)); padding:12px 14px; border:1px solid rgba(237,106,120,.42); border-radius:7px; background:#261317; color:#ffc0c7; box-shadow:0 18px 60px rgba(0,0,0,.45); font-size:12px; }
+    #validation-error.visible { display:block; animation:notice-in .18s ease-out; }
+    @keyframes notice-in { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+    @media(max-width:1100px) { .state-panel,.events-panel { grid-column:span 12; } .runtime-panel,.scenario-panel,.fault-panel { grid-column:span 6; } .fault-panel { grid-column:auto / span 6; } }
+    @media(max-width:760px) {
+      .app-shell { display:block; } .workspace-sidebar { position:relative; width:100%; height:auto; padding:10px 14px; border-right:0; border-bottom:1px solid var(--line); }
+      .brand { padding-bottom:9px; } .sidebar-label,.sidebar-spacer,.environment-card { display:none; } .sidebar-nav { display:flex; overflow-x:auto; } .nav-item { flex:0 0 auto; }
+      .workspace-header { padding:0 16px; } .breadcrumb .optional { display:none; } .content { padding:22px 16px 36px; } .page-intro { display:block; } .device-chip { margin-top:16px; }
+      .status-grid { grid-template-columns:1fr 1fr; } .runtime-panel,.scenario-panel,.fault-panel { grid-column:span 12; } .fault-panel { grid-column:auto / span 12; }
+      .event-row { grid-template-columns:62px minmax(0,1fr); } .event-data { grid-column:1/-1; }
+    }
+    @media(max-width:460px) { .status-grid,.form-grid { grid-template-columns:1fr; } .form-grid .wide { grid-column:auto; } .header-meta span:last-child { display:none; } }
+    @media(prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; animation:none!important; transition:none!important; } }
   </style>
 </head>
 <body>
-  <div class="shell">
-    <div id="validation-error" role="alert"></div>
-    <header>
-      <div><div class="kicker">Runtime Operations / v0.1</div><h1>Industrial Device<br>Simulation</h1></div>
-      <div class="identity"><strong id="device-id">Connecting…</strong><span id="device-type">runtime discovery</span></div>
-    </header>
-    <section class="status-rail">
-      <div class="status"><span>Runtime</span><strong><i id="runtime-lamp" class="lamp"></i><b id="runtime-state">Loading</b></strong></div>
-      <div class="status"><span>OPC UA</span><strong><i id="opcua-lamp" class="lamp"></i><b id="opcua-state">Unknown</b></strong></div>
-      <div class="status"><span>Modbus TCP</span><strong><i id="modbus-lamp" class="lamp"></i><b id="modbus-state">Unknown</b></strong></div>
-      <div class="status"><span>Scenario / Fault</span><strong><i id="activity-lamp" class="lamp"></i><b id="activity-state">Idle</b></strong></div>
-    </section>
-    <main>
-      <div class="stack">
-        <section class="panel"><div class="panel-head"><h2>StateStore datapoints</h2><small id="sim-time">00:00:00</small></div><div class="panel-body"><table><thead><tr><th>Datapoint</th><th>Runtime value</th></tr></thead><tbody id="state-body"></tbody></table></div></section>
-        <section class="panel"><div class="panel-head"><h2>Runtime control</h2><small>Start · Paused · Stopped · Reset</small></div><div class="panel-body"><div class="controls"><button class="primary" data-runtime="start">Start / Resume</button><button data-runtime="pause">Pause</button><button class="danger" data-runtime="stop">Stop</button><button data-runtime="reset">Reset</button><button id="tick">Advance 1s</button></div></div></section>
-        <section class="panel"><div class="panel-head"><h2>Runtime events</h2><small>ordered observer stream</small></div><div id="event-terminal" class="terminal">Waiting for events…</div></section>
-      </div>
-      <div class="stack">
-        <section class="panel"><div class="panel-head"><h2>Scenario control</h2><small id="scenario-state">Stopped</small></div><div class="panel-body">
-          <label for="scenario-yaml">Scenario YAML</label><textarea id="scenario-yaml">scenario:
+  <div class="app-shell">
+    <aside class="workspace-sidebar" aria-label="Workspace navigation">
+      <div class="brand"><div class="brand-mark">IS</div><div class="brand-copy"><strong>Industrial Sim</strong><span>Developer runtime</span></div></div>
+      <div class="sidebar-label">Workspace</div>
+      <nav class="sidebar-nav">
+        <a class="nav-item active" href="#overview">Overview</a><a class="nav-item" href="#state-store">State store</a><a class="nav-item" href="#runtime-events">Events</a><a class="nav-item" href="#scenario-control">Scenarios</a><a class="nav-item" href="#fault-control">Faults</a>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <div class="environment-card"><span>Connected device</span><strong id="sidebar-device-id">Connecting…</strong><small id="sidebar-device-type">runtime discovery</small></div>
+    </aside>
+    <section class="command-center">
+      <header class="workspace-header"><div class="breadcrumb"><strong>Workspace</strong><span class="slash">/</span><span>Runtime</span><span class="slash optional">/</span><span class="optional">Command center</span></div><div class="header-meta"><i class="sync-dot"></i><span id="last-sync">Connecting</span></div></header>
+      <div id="validation-error" role="alert" aria-live="assertive"></div>
+      <main id="overview" class="content">
+        <section class="page-intro"><div><div class="eyebrow">Runtime operations</div><h1>Industrial Device Simulation</h1><p>Inspect shared state, coordinate scenarios, and inject controlled failures from one live operational workspace.</p></div><div class="device-chip"><div class="device-glyph">D1</div><div><strong id="device-id">Connecting…</strong><span id="device-type">runtime discovery</span></div></div></section>
+        <section class="status-grid" aria-label="Runtime status" aria-live="polite">
+          <div class="status-card"><div class="status-card-label"><span>Runtime</span><i id="runtime-lamp" class="lamp"></i></div><strong id="runtime-state">Loading</strong></div>
+          <div class="status-card"><div class="status-card-label"><span>OPC UA</span><i id="opcua-lamp" class="lamp"></i></div><strong id="opcua-state">Unknown</strong></div>
+          <div class="status-card"><div class="status-card-label"><span>Modbus TCP</span><i id="modbus-lamp" class="lamp"></i></div><strong id="modbus-state">Unknown</strong></div>
+          <div class="status-card"><div class="status-card-label"><span>Activity</span><i id="activity-lamp" class="lamp idle"></i></div><strong id="activity-state">Idle</strong></div>
+        </section>
+        <div class="dashboard-grid">
+          <section id="state-store" class="panel state-panel"><div class="panel-head"><div class="panel-title"><i class="panel-icon"></i><h2>StateStore datapoints</h2></div><small id="sim-time">00:00:00</small></div><div class="panel-body"><table><thead><tr><th>Signal</th><th>Type</th><th>Runtime value</th></tr></thead><tbody id="state-body"></tbody></table></div></section>
+          <section class="panel runtime-panel"><div class="panel-head"><div class="panel-title"><i class="panel-icon"></i><h2>Runtime control</h2></div><small>Running · Paused · Stopped</small></div><div class="panel-body"><p class="runtime-copy">Control the simulation clock and lifecycle. Advance is available only in deterministic mode.</p><div class="controls"><button type="button" class="primary" data-runtime="start">Start / Resume</button><button type="button" data-runtime="pause">Pause</button><button type="button" class="danger" data-runtime="stop">Stop</button><button type="button" data-runtime="reset">Reset</button><button type="button" id="tick">Advance 1s</button></div></div></section>
+          <section id="runtime-events" class="panel events-panel"><div class="panel-head"><div class="panel-title"><i class="panel-icon"></i><h2>Runtime events</h2></div><small>Commit ordered · latest 80</small></div><div id="event-terminal" class="event-terminal" aria-live="polite"><div class="event-empty">Waiting for runtime events…</div></div></section>
+          <section id="scenario-control" class="panel scenario-panel"><div class="panel-head"><div class="panel-title"><i class="panel-icon"></i><h2>Scenario control</h2></div><small id="scenario-state">Stopped</small></div><div class="panel-body"><label for="scenario-yaml">Scenario YAML</label><textarea id="scenario-yaml" spellcheck="false">scenario:
   name: operator-sequence
   steps:
     - at: 0s
       set:
         device: pump-001
         datapoint: speed
-        value: 900</textarea>
-          <div class="controls" style="margin-top:10px"><button id="run-scenario" class="primary">Run Scenario</button><button id="stop-scenario" class="danger">Stop Scenario</button></div>
-        </div></section>
-        <section class="panel"><div class="panel-head"><h2>Fault control</h2><small>Scheduled · Active · Recovered</small></div><div class="panel-body">
-          <div class="form-grid"><div><label for="fault-category">Category</label><select id="fault-category"><option>Data</option><option>Device</option><option>Network</option></select></div><div><label for="fault-type">Type</label><input id="fault-type" value="spike"></div><div><label for="fault-target">Target</label><input id="fault-target" value="speed"></div><div><label for="fault-parameter">Parameter</label><input id="fault-parameter" value="25"></div><div class="wide"><button id="activate-fault" class="danger">Activate Fault</button></div></div>
-          <div id="fault-list" class="fault-list"><div class="hint">No active faults.</div></div>
-        </div></section>
-      </div>
-    </main>
+        value: 900</textarea><div class="controls action-row"><button type="button" id="run-scenario" class="primary">Run Scenario</button><button type="button" id="stop-scenario" class="danger">Stop Scenario</button></div></div></section>
+          <section id="fault-control" class="panel fault-panel"><div class="panel-head"><div class="panel-title"><i class="panel-icon"></i><h2>Fault control</h2></div><small>Data · Device · Network</small></div><div class="panel-body"><div class="form-grid"><div><label for="fault-category">Category</label><select id="fault-category"><option>Data</option><option>Device</option><option>Network</option></select></div><div><label for="fault-type">Type</label><input id="fault-type" value="spike"></div><div><label for="fault-target">Target</label><input id="fault-target" value="speed"></div><div><label for="fault-parameter">Parameter</label><input id="fault-parameter" value="25"></div><div class="wide"><button type="button" id="activate-fault" class="danger">Activate Fault</button></div></div><div id="fault-list" class="fault-list"><div class="hint">No active faults.</div></div></div></section>
+        </div>
+      </main>
+    </section>
   </div>
   <script>
     const $ = id => document.getElementById(id);
-    const request = async (url, options={}) => { const response = await fetch(url, options); const text = await response.text(); let data={}; try{data=text?JSON.parse(text):{}}catch{data={error:text}} if(!response.ok) throw new Error(data.error||`${response.status} ${response.statusText}`); return data; };
+    const request = async (url,options={}) => { const response=await fetch(url,options); const text=await response.text(); let data={}; try{data=text?JSON.parse(text):{}}catch{data={error:text}} if(!response.ok) throw new Error(data.error||`${response.status} ${response.statusText}`); return data; };
     const showError = error => { const box=$('validation-error'); box.textContent=error.message||String(error); box.classList.add('visible'); setTimeout(()=>box.classList.remove('visible'),6000); };
-    const lamp = (id,state) => { const el=$(id); el.className=`lamp ${String(state).toLowerCase()}`; };
+    const lamp = (id,state) => { $(id).className=`lamp ${String(state).toLowerCase()}`; };
     const node = (tag,text,className) => { const element=document.createElement(tag); if(text!==undefined) element.textContent=text; if(className) element.className=className; return element; };
-    const renderState = state => { const body=$('state-body'); body.replaceChildren(); const entries=Object.entries(state); if(!entries.length){const row=node('tr');const cell=node('td','No datapoints');cell.colSpan=2;row.append(cell);body.append(row);return} entries.forEach(([name,value])=>{const row=node('tr');row.append(node('td',name),node('td',JSON.stringify(value)));body.append(row)}); };
-    const renderFaults = faults => { const list=$('fault-list'); list.replaceChildren(); if(!faults.length){list.append(node('div','No active faults.','hint'));return} const categories=['Data','Device','Network']; faults.forEach(fault=>{const row=node('div',undefined,'fault-row');const button=node('button','Recover');button.dataset.recover=String(fault.id);row.append(node('span',`${fault.id} · ${categories[fault.category]??fault.category} · ${fault.type}`),button);list.append(row)}); };
+    const valueType = value => value===null?'null':Array.isArray(value)?'array':typeof value;
+    const renderState = state => { const body=$('state-body'); body.replaceChildren(); const entries=Object.entries(state); if(!entries.length){const row=node('tr');const cell=node('td','No datapoints');cell.colSpan=3;row.append(cell);body.append(row);return} entries.forEach(([name,value])=>{const row=node('tr');const type=node('span',valueType(value),'type-badge');const typeCell=node('td');typeCell.append(type);const valueCell=node('td');valueCell.append(node('code',JSON.stringify(value)));row.append(node('td',name),typeCell,valueCell);body.append(row)}); };
+    const renderEvents = events => { const terminal=$('event-terminal'); terminal.replaceChildren(); if(!events.length){terminal.append(node('div','Waiting for runtime events…','event-empty'));return} events.slice(-80).reverse().forEach(event=>{const row=node('div',undefined,'event-row');const rawTime=event.timestamp?.elapsed||event.timestamp||event.time;const time=typeof rawTime==='string'&&rawTime.includes(':')?rawTime.split('.')[0]:rawTime?new Date(rawTime).toLocaleTimeString([], {hour12:false}):'--:--:--';const type=event.eventType||event.type||(event.dataPointId?'DataPointChanged':event.commandName?'CommandExecuted':'eventMetadata' in event?'Lifecycle':'RuntimeEvent');row.append(node('span',time,'event-time'),node('span',String(type),'event-type'),node('span',JSON.stringify(event),'event-data'));terminal.append(row)}); };
+    const renderFaults = faults => { const list=$('fault-list'); list.replaceChildren(); if(!faults.length){list.append(node('div','No active faults.','hint'));return} const categories=['Data','Device','Network']; faults.forEach(fault=>{const row=node('div',undefined,'fault-row');const button=node('button','Recover');button.type='button';button.dataset.recover=String(fault.id);row.append(node('span',`${fault.id} · ${categories[fault.category]??fault.category} · ${fault.type}`),button);list.append(row)}); };
     const refresh = async () => { try {
-      const [state,runtime,protocols,events,faults] = await Promise.all(['/api/state','/api/runtime','/api/protocols','/api/events','/api/faults'].map(url=>request(url)));
-      $('device-id').textContent=runtime.deviceId; $('device-type').textContent=`${runtime.deviceType} · ${runtime.deterministic?'deterministic':'real-time'} · seed ${runtime.seed}`;
+      const [state,runtime,protocols,events,faults]=await Promise.all(['/api/state','/api/runtime','/api/protocols','/api/events','/api/faults'].map(url=>request(url)));
+      $('device-id').textContent=runtime.deviceId; $('device-type').textContent=`${runtime.deviceType} · ${runtime.deterministic?'deterministic':'real-time'} · seed ${runtime.seed}`; $('sidebar-device-id').textContent=runtime.deviceId; $('sidebar-device-type').textContent=runtime.deviceType;
       $('runtime-state').textContent=runtime.state; lamp('runtime-lamp',runtime.state); $('sim-time').textContent=runtime.time;
-      $('opcua-state').textContent=protocols.opcua?'Online':'Offline'; lamp('opcua-lamp',protocols.opcua?'running':'stopped');
-      $('modbus-state').textContent=protocols.modbus?'Online':'Offline'; lamp('modbus-lamp',protocols.modbus?'running':'stopped');
-      const active=runtime.scenario.running||runtime.activeFaults>0; $('activity-state').textContent=runtime.scenario.running?`Scenario: ${runtime.scenario.name}`:runtime.activeFaults?`${runtime.activeFaults} Fault Active`:'Idle'; lamp('activity-lamp',active?'active':'stopped'); $('scenario-state').textContent=runtime.scenario.running?'Running':'Stopped';
-      renderState(state);
-      $('event-terminal').textContent=events.length?events.slice(-80).map((event,index)=>`${String(index+1).padStart(3,'0')}  ${JSON.stringify(event)}`).join('\n'):'Waiting for events…';
-      renderFaults(faults);
+      $('opcua-state').textContent=protocols.opcua?'Online':'Offline'; lamp('opcua-lamp',protocols.opcua?'running':'stopped'); $('modbus-state').textContent=protocols.modbus?'Online':'Offline'; lamp('modbus-lamp',protocols.modbus?'running':'stopped');
+      const active=runtime.scenario.running||runtime.activeFaults>0; $('activity-state').textContent=runtime.scenario.running?`Scenario: ${runtime.scenario.name}`:runtime.activeFaults?`${runtime.activeFaults} Fault Active`:'Idle'; lamp('activity-lamp',active?'active':'idle'); $('scenario-state').textContent=runtime.scenario.running?'Running':'Stopped'; $('last-sync').textContent=`Synced ${new Date().toLocaleTimeString([], {hour12:false})}`;
+      renderState(state); renderEvents(events); renderFaults(faults);
       document.querySelectorAll('[data-recover]').forEach(button=>button.onclick=async()=>{try{await request(`/api/fault/recover/${encodeURIComponent(button.dataset.recover)}`,{method:'POST'});await refresh()}catch(error){showError(error)}});
-      if($('scenario-yaml').value.includes('pump-001')) $('scenario-yaml').value=$('scenario-yaml').value.replaceAll('pump-001',runtime.deviceId);
-      $('tick').disabled=!runtime.deterministic;
+      if($('scenario-yaml').value.includes('pump-001')) $('scenario-yaml').value=$('scenario-yaml').value.replaceAll('pump-001',runtime.deviceId); $('tick').disabled=!runtime.deterministic;
     } catch(error){ showError(error); } };
     document.querySelectorAll('[data-runtime]').forEach(button=>button.onclick=async()=>{try{await request(`/api/runtime/${button.dataset.runtime}`,{method:'POST'});await refresh()}catch(error){showError(error)}});
-    $('tick').onclick=async()=>{try{await request('/api/runtime/tick/1',{method:'POST'});await refresh()}catch(error){showError(error)}};
-    $('run-scenario').onclick=async()=>{try{await request('/api/scenario',{method:'POST',headers:{'Content-Type':'text/yaml'},body:$('scenario-yaml').value});await refresh()}catch(error){showError(error)}};
-    $('stop-scenario').onclick=async()=>{try{await request('/api/scenario',{method:'DELETE'});await refresh()}catch(error){showError(error)}};
-    $('activate-fault').onclick=async()=>{try{const parameter=$('fault-parameter').value;await request('/api/fault',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:`ui-${Date.now()}`,category:$('fault-category').value,target:$('fault-target').value,type:$('fault-type').value,metadata:parameter?{parameter}:null})});await refresh()}catch(error){showError(error)}};
+    $('tick').onclick=async()=>{try{await request('/api/runtime/tick/1',{method:'POST'});await refresh()}catch(error){showError(error)}}; $('run-scenario').onclick=async()=>{try{await request('/api/scenario',{method:'POST',headers:{'Content-Type':'text/yaml'},body:$('scenario-yaml').value});await refresh()}catch(error){showError(error)}};
+    $('stop-scenario').onclick=async()=>{try{await request('/api/scenario',{method:'DELETE'});await refresh()}catch(error){showError(error)}}; $('activate-fault').onclick=async()=>{try{const parameter=$('fault-parameter').value;await request('/api/fault',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:`ui-${Date.now()}`,category:$('fault-category').value,target:$('fault-target').value,type:$('fault-type').value,metadata:parameter?{parameter}:null})});await refresh()}catch(error){showError(error)}};
     refresh(); setInterval(refresh,1000);
   </script>
 </body>
