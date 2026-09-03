@@ -1,6 +1,7 @@
 import { computed, reactive, ref } from 'vue'
 import type { DeveloperConsoleApi } from '../api'
 import type { ActiveFault, ProtocolStatus, RuntimeEvent, RuntimeStatus, ScalarValue } from '../types'
+import type { RuntimeLiveConnection } from './useRuntimeSignalR'
 
 const defaultScenario = `scenario:
   name: operator-sequence
@@ -22,7 +23,7 @@ const emptyRuntime: RuntimeStatus = {
   activeFaults: 0,
 }
 
-export function useDeveloperConsole(api: DeveloperConsoleApi) {
+export function useDeveloperConsole(api: DeveloperConsoleApi, live?: RuntimeLiveConnection) {
   const state = ref<Record<string, ScalarValue>>({})
   const runtime = ref<RuntimeStatus>({ ...emptyRuntime })
   const protocols = ref<ProtocolStatus>({ opcua: false, modbus: false })
@@ -109,6 +110,31 @@ export function useDeveloperConsole(api: DeveloperConsoleApi) {
     pollingHandle = undefined
   }
 
+  async function startLiveUpdates() {
+    if (!live) {
+      startPolling()
+      return
+    }
+    try {
+      await live.start(
+        () => { void refresh(true) },
+        startPolling,
+        () => {
+          stopPolling()
+          void refresh(true)
+        },
+      )
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : String(cause)
+      startPolling()
+    }
+  }
+
+  async function stopLiveUpdates() {
+    stopPolling()
+    await live?.stop()
+  }
+
   return {
     state,
     runtime,
@@ -125,6 +151,8 @@ export function useDeveloperConsole(api: DeveloperConsoleApi) {
     refresh,
     startPolling,
     stopPolling,
+    startLiveUpdates,
+    stopLiveUpdates,
     runRuntimeCommand,
     tick,
     runScenario,

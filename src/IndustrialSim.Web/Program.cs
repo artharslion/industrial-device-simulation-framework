@@ -1,4 +1,6 @@
 using IndustrialSim.Web;
+using IndustrialSim.Web.Api.V1;
+using IndustrialSim.Web.Hubs;
 using IndustrialSim.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -17,12 +19,21 @@ if (overrides.LogLevel is { } configuredLogLevel)
 var simulation = await WebHostComposition.CreateAsync(configuredPath, builder.Environment.IsDevelopment(), new SimulationHostOptions(Overrides: overrides));
 if (string.IsNullOrWhiteSpace(builder.Configuration["urls"])) builder.WebHost.UseUrls($"http://0.0.0.0:{simulation.WebPort}");
 builder.Services.AddSingleton(simulation);
+var registry = new SimulationRegistry();
+await registry.AddAsync(simulation);
+builder.Services.AddIndustrialSimControlPlane(
+    registry,
+    builder.Configuration.GetConnectionString("IndustrialSim") ?? "Data Source=industrial-sim.db");
 
 var app = builder.Build();
+app.UseIndustrialSimProblemDetails();
 app.Logger.LogInformation("Starting industrial simulation for device {DeviceId} on Web port {WebPort}", simulation.Runtime.Definition.Id.Value, simulation.WebPort);
 await simulation.StartAsync(app.Lifetime.ApplicationStopping);
 
 app.MapIndustrialSimApi(simulation);
+app.MapIndustrialSimV1Api();
+app.MapRuntimeHub();
+app.MapOpenApi("/openapi/v1.json");
 app.MapIndustrialSimDeveloperConsole();
 
 try
@@ -31,7 +42,7 @@ try
 }
 finally
 {
-    await simulation.DisposeAsync();
+    await registry.DisposeAsync();
 }
 
 static string? Option(string[] values, string name)

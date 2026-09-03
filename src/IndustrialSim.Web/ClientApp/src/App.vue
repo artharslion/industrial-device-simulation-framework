@@ -4,10 +4,12 @@ import { developerConsoleApi, developerConsoleApiKey } from './api'
 import ConsolePanel from './components/ConsolePanel.vue'
 import StatusCard from './components/StatusCard.vue'
 import { useDeveloperConsole } from './composables/useDeveloperConsole'
+import { runtimeLiveConnection, runtimeLiveConnectionKey } from './composables/useRuntimeSignalR'
 import type { RuntimeEvent, ScalarValue } from './types'
 
 const consoleApi = inject(developerConsoleApiKey, developerConsoleApi)
-const consoleState = useDeveloperConsole(consoleApi)
+const liveConnection = inject(runtimeLiveConnectionKey, runtimeLiveConnection)
+const consoleState = useDeveloperConsole(consoleApi, liveConnection)
 
 const stateEntries = computed(() => Object.entries(consoleState.state.value))
 const recentEvents = computed(() => consoleState.events.value.slice(-80).reverse())
@@ -49,10 +51,10 @@ function faultCategory(category: number | string) {
 
 onMounted(async () => {
   await consoleState.refresh()
-  consoleState.startPolling()
+  await consoleState.startLiveUpdates()
 })
 
-onBeforeUnmount(consoleState.stopPolling)
+onBeforeUnmount(() => { void consoleState.stopLiveUpdates() })
 </script>
 
 <template>

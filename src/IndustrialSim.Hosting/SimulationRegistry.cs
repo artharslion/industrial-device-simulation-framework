@@ -45,14 +45,16 @@ public sealed class SimulationHandle
     }
 
     internal SemaphoreSlim LifecycleGate { get; } = new(1, 1);
-    internal IReadOnlyList<ProtocolPortBinding> PortBindings { get; }
+    public IReadOnlyList<ProtocolPortBinding> PortBindings { get; }
     public SimulationHost Host { get; }
     public string DeviceId => Host.Runtime.Definition.Id.Value;
 }
 
 public interface ISimulationRegistry
 {
+    event Action<SimulationHandle>? SimulationAdded;
     Task<SimulationHandle> CreateAsync(DeviceLaunchDefinition definition, CancellationToken cancellationToken = default);
+    Task<SimulationHandle> AddAsync(SimulationHost host, IReadOnlyList<ProtocolPortBinding>? portBindings = null, CancellationToken cancellationToken = default);
     Task StartAsync(string deviceId, CancellationToken cancellationToken = default);
     Task StopAsync(string deviceId, CancellationToken cancellationToken = default);
     Task RemoveAsync(string deviceId, CancellationToken cancellationToken = default);
@@ -69,6 +71,8 @@ public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
     private readonly Dictionary<int, string> _reservedPorts = [];
     private readonly SemaphoreSlim _catalogGate = new(1, 1);
     private bool _disposed;
+
+    public event Action<SimulationHandle>? SimulationAdded;
 
     public async Task<SimulationHandle> CreateAsync(DeviceLaunchDefinition definition, CancellationToken cancellationToken = default)
     {
@@ -97,6 +101,37 @@ public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
                 throw new SimulationConflictException($"Simulation '{deviceId}' already exists.", "duplicateDeviceId");
             }
             foreach (var binding in bindings) _reservedPorts.Add(binding.Port, deviceId);
+            SimulationAdded?.Invoke(handle);
+            return handle;
+        }
+        finally
+        {
+            _catalogGate.Release();
+        }
+    }
+
+    public async Task<SimulationHandle> AddAsync(
+        SimulationHost host,
+        IReadOnlyList<ProtocolPortBinding>? portBindings = null,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(host);
+        var deviceId = host.Runtime.Definition.Id.Value;
+        var bindings = NormalizeBindings(portBindings);
+        await _catalogGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_simulations.ContainsKey(deviceId))
+                throw new SimulationConflictException($"Simulation '{deviceId}' already exists.", "duplicateDeviceId");
+            foreach (var binding in bindings)
+                if (_reservedPorts.TryGetValue(binding.Port, out var owner))
+                    throw new SimulationConflictException($"Port {binding.Port} is already reserved by simulation '{owner}'.", "portConflict");
+            var handle = new SimulationHandle(host, bindings);
+            if (!_simulations.TryAdd(deviceId, handle))
+                throw new SimulationConflictException($"Simulation '{deviceId}' already exists.", "duplicateDeviceId");
+            foreach (var binding in bindings) _reservedPorts.Add(binding.Port, deviceId);
+            SimulationAdded?.Invoke(handle);
             return handle;
         }
         finally

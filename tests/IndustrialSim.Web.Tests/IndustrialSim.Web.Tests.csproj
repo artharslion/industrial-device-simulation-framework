@@ -18,7 +18,10 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <Using Include="Xunit" />
   </ItemGroup>
-  <ItemGroup><ProjectReference Include="..\..\src\IndustrialSim.Web\IndustrialSim.Web.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\IndustrialSim.Web\IndustrialSim.Web.csproj" />
+    <ProjectReference Include="..\..\src\IndustrialSim.Persistence\IndustrialSim.Persistence.csproj" />
+  </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\src\IndustrialSim.Web\wwwroot\index.html" Link="wwwroot\index.html" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\src\IndustrialSim.Web\wwwroot\assets\app.js" Link="wwwroot\assets\app.js" CopyToOutputDirectory="PreserveNewest" />

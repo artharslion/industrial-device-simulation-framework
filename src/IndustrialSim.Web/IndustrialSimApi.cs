@@ -10,8 +10,15 @@ public static class IndustrialSimApi
 {
     public static IEndpointRouteBuilder MapIndustrialSimApi(this IEndpointRouteBuilder endpoints, SimulationHost simulation)
     {
-        endpoints.MapGet("/api/state", () => Results.Ok(simulation.State.Snapshot().ToDictionary(item => item.Key, item => item.Value?.Value)));
-        endpoints.MapGet("/api/runtime", () => Results.Ok(new
+        var legacy = endpoints.MapGroup("/api").AddEndpointFilter(async (context, next) =>
+        {
+            context.HttpContext.Response.Headers["Deprecation"] = "true";
+            context.HttpContext.Response.Headers["Sunset"] = "Wed, 03 Mar 2027 00:00:00 GMT";
+            context.HttpContext.Response.Headers.Link = "</api/v1>; rel=\"successor-version\"";
+            return await next(context);
+        });
+        legacy.MapGet("/state", () => Results.Ok(simulation.State.Snapshot().ToDictionary(item => item.Key, item => item.Value?.Value)));
+        legacy.MapGet("/runtime", () => Results.Ok(new
         {
             state = simulation.Engine.State.ToString(),
             time = simulation.Engine.CurrentTime.Elapsed,
@@ -22,14 +29,14 @@ public static class IndustrialSimApi
             scenario = new { name = simulation.ActiveScenarioName, running = simulation.ScenarioRunner?.IsRunning == true },
             activeFaults = simulation.FaultManager.ActiveFaults.Count
         }));
-        endpoints.MapGet("/api/protocols", () => Results.Ok(new
+        legacy.MapGet("/protocols", () => Results.Ok(new
         {
             opcua = simulation.Protocols.TryGetValue("opcua", out var opcua) && opcua.IsRunning,
             modbus = simulation.Protocols.TryGetValue("modbus", out var modbus) && modbus.IsRunning
         }));
-        endpoints.MapGet("/api/events", () => Results.Ok(simulation.Events));
-        endpoints.MapGet("/api/faults", () => Results.Ok(simulation.FaultManager.ActiveFaults));
-        endpoints.MapPost("/api/runtime/{command}", async (string command) =>
+        legacy.MapGet("/events", () => Results.Ok(simulation.Events));
+        legacy.MapGet("/faults", () => Results.Ok(simulation.FaultManager.ActiveFaults));
+        legacy.MapPost("/runtime/{command}", async (string command) =>
         {
             switch (command.ToLowerInvariant())
             {
@@ -41,19 +48,19 @@ public static class IndustrialSimApi
             }
             return Results.Ok(new { state = simulation.Engine.State.ToString() });
         });
-        endpoints.MapPost("/api/runtime/tick/{seconds:double}", (double seconds) =>
+        legacy.MapPost("/runtime/tick/{seconds:double}", (double seconds) =>
         {
             if (!simulation.IsDeterministic) return Results.BadRequest(new { error = "Explicit ticks require deterministic mode." });
             if (seconds < 0) return Results.BadRequest(new { error = "Tick duration cannot be negative." });
             simulation.Tick(TimeSpan.FromSeconds(seconds));
             return Results.Ok(new { time = simulation.Engine.CurrentTime.Elapsed });
         });
-        endpoints.MapPost("/api/state/{name}", (string name, JsonElement value) =>
+        legacy.MapPost("/state/{name}", (string name, JsonElement value) =>
         {
             var result = simulation.Runtime.Write(name, JsonValue(value));
             return result.Succeeded ? Results.Ok(result) : Results.BadRequest(new { error = result.Error });
         });
-        endpoints.MapPost("/api/scenario", async (HttpRequest request) =>
+        legacy.MapPost("/scenario", async (HttpRequest request) =>
         {
             try
             {
@@ -64,8 +71,8 @@ public static class IndustrialSimApi
             }
             catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
         });
-        endpoints.MapDelete("/api/scenario", () => simulation.StopScenario() ? Results.Ok(new { running = false }) : Results.NotFound(new { error = "No scenario is running." }));
-        endpoints.MapPost("/api/fault", (FaultRequest request) =>
+        legacy.MapDelete("/scenario", () => simulation.StopScenario() ? Results.Ok(new { running = false }) : Results.NotFound(new { error = "No scenario is running." }));
+        legacy.MapPost("/fault", (FaultRequest request) =>
         {
             if (!Enum.TryParse<FaultCategory>(request.Category, true, out var category)) return Results.BadRequest(new { error = $"Unknown fault category '{request.Category}'." });
             try
@@ -84,7 +91,7 @@ public static class IndustrialSimApi
             }
             catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
         });
-        endpoints.MapPost("/api/fault/recover/{id}", (string id) => simulation.RecoverFault(id) ? Results.Ok() : Results.NotFound());
+        legacy.MapPost("/fault/recover/{id}", (string id) => simulation.RecoverFault(id) ? Results.Ok() : Results.NotFound());
         return endpoints;
     }
 

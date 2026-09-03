@@ -2,6 +2,7 @@ import { nextTick } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import { useDeveloperConsole } from './useDeveloperConsole'
 import type { DeveloperConsoleApi } from '../api'
+import type { RuntimeLiveConnection } from './useRuntimeSignalR'
 
 const snapshot = {
   state: { speed: 900, running: true },
@@ -77,6 +78,33 @@ describe('useDeveloperConsole', () => {
     await vi.advanceTimersByTimeAsync(2000)
 
     expect(api.getSnapshot).toHaveBeenCalledOnce()
+    vi.useRealTimers()
+  })
+
+  it('uses SignalR first and enables polling only while disconnected', async () => {
+    vi.useFakeTimers()
+    const api = createApi()
+    let disconnected = () => undefined
+    let reconnected = () => undefined
+    const live: RuntimeLiveConnection = {
+      start: vi.fn(async (_event, onDisconnected, onReconnected) => {
+        disconnected = onDisconnected
+        reconnected = onReconnected
+      }),
+      stop: vi.fn().mockResolvedValue(undefined),
+    }
+    const consoleState = useDeveloperConsole(api, live)
+
+    await consoleState.startLiveUpdates()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(api.getSnapshot).not.toHaveBeenCalled()
+    disconnected()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(api.getSnapshot).toHaveBeenCalledOnce()
+    reconnected()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(api.getSnapshot).toHaveBeenCalledTimes(2)
+    await consoleState.stopLiveUpdates()
     vi.useRealTimers()
   })
 })

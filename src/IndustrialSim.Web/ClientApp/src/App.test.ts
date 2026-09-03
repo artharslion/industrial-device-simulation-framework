@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import App from './App.vue'
 import { developerConsoleApiKey } from './api'
 import type { DeveloperConsoleApi } from './api'
+import { runtimeLiveConnectionKey } from './composables/useRuntimeSignalR'
 
 const api: DeveloperConsoleApi = {
   getSnapshot: vi.fn().mockResolvedValue({
@@ -22,7 +23,8 @@ const api: DeveloperConsoleApi = {
 
 describe('developer console', () => {
   it('renders the operational workspace and runtime controls', async () => {
-    const wrapper = mount(App, { global: { provide: { [developerConsoleApiKey as symbol]: api } } })
+    const live = { start: vi.fn().mockResolvedValue(undefined), stop: vi.fn().mockResolvedValue(undefined) }
+    const wrapper = mount(App, { global: { provide: { [developerConsoleApiKey as symbol]: api, [runtimeLiveConnectionKey as symbol]: live } } })
     await vi.waitFor(() => expect(wrapper.text()).toContain('pump-001'))
 
     expect(wrapper.find('[aria-label="Workspace navigation"]').exists()).toBe(true)
