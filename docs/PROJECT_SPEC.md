@@ -116,6 +116,37 @@ phase may define their interfaces or matrix ownership only; it must not
 implement MQTT, S7, BACnet, a template marketplace, test platform, forwarding,
 or recording/replay.
 
+## 2.4 Wave 2 visual modeling scope
+
+The authorized Wave 2 product increment is limited to three connected
+developer workflows:
+
+1. Visual device template creation backed by a local, versioned template
+   catalog and protocol-independent mapping profiles.
+2. Graphical scenario editing with YAML import and export, optimistic versions,
+   and deterministic execution through the existing Scenario Engine.
+3. A complete multi-page Vue developer console for the platform capabilities
+   already implemented through Wave 1 and the two modeling workflows above.
+
+Device templates describe logical definitions and behavior metadata. Protocol
+mappings are separate profiles and may not introduce protocol addresses into
+Core or Scenario actions. Saving an existing template definition creates a new
+immutable version. The local catalog is not a template marketplace and has no
+remote publication, rating, purchase, or package-discovery behavior.
+
+The scenario editor stores presentation metadata separately from executable
+Scenario YAML. Reordering or positioning visual elements changes executable
+order only through an explicit user action; visual layout alone has no runtime
+meaning. Imported YAML is validated by the existing parser before persistence.
+
+Vue Router may be added to provide addressable pages. Pinia may store shared
+authentication and presentation state, but it may not become a cache of record
+for live device state. StateStore, `/api/v1`, and SignalR remain authoritative.
+
+The following remain deferred after Wave 2: template marketplace distribution,
+automated test suites/reports, forwarding, Webhooks, recording/replay, MQTT,
+S7, BACnet, and other additional protocols.
+
 ---
 
 # 3. Non-Goals
@@ -1940,7 +1971,7 @@ Vue 3 API/live-channel integration
 ## v0.3
 
 ```text
-Wave 2: templates, managed scenarios, and expanded Vue console
+Wave 2: visual device templates, graphical scenarios, and multi-page Vue console
 Wave 3: user tests, observability, integrations, recording/replay, SDK
 ```
 

@@ -30,4 +30,18 @@ public sealed class DocumentationContractTests
         Assert.Contains("Acceptance evidence", matrix, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Status", matrix, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void Wave_two_is_limited_to_visual_modeling_and_the_multi_page_console()
+    {
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var specification = File.ReadAllText(Path.Combine(root, "docs", "PROJECT_SPEC.md"));
+        var plan = File.ReadAllText(Path.Combine(root, "docs", "plans", "2026-09-02-protoforge-baseline-implementation-plan.md"));
+
+        Assert.Contains("visual device template", specification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("graphical scenario", specification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("multi-page Vue", specification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("local template catalog", plan, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("TemplateMarketplaceTests", plan, StringComparison.Ordinal);
+    }
 }

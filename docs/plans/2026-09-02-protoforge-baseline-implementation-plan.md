@@ -498,14 +498,14 @@ git add src/IndustrialSim.Web tests
 git commit -m "feat: add full developer web console"
 ```
 
-### Task 2.4: Add Vue scenario editing and template catalog flows
+### Task 2.4: Add Vue scenario editing and local template catalog flows
 
 **Files:**
 - Create: `src/IndustrialSim.Web/ClientApp/src/components/scenario-editor/*.vue`
 - Create: `src/IndustrialSim.Web/ClientApp/src/components/templates/*.vue`
 - Create: `src/IndustrialSim.Web/ClientApp/src/composables/useScenarioEditor.ts`
 - Test: `tests/IndustrialSim.Web.E2ETests/ScenarioEditorTests.cs`
-- Test: `tests/IndustrialSim.Web.E2ETests/TemplateMarketplaceTests.cs`
+- Test: `tests/IndustrialSim.Web.E2ETests/TemplateCatalogTests.cs`
 
 **Step 1: Write failing browser tests**
 
@@ -531,7 +531,7 @@ Expected: PASS; graph layout changes do not alter Scenario AST semantics.
 
 ```powershell
 git add src/IndustrialSim.Web/ClientApp tests/IndustrialSim.Web.E2ETests
-git commit -m "feat: add scenario editor and template marketplace"
+git commit -m "feat: add scenario editor and local template catalog"
 ```
 
 ## Wave 3: Testing, observability, and integrations
