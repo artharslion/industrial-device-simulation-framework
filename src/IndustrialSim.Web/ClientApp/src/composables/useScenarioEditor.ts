@@ -1,7 +1,7 @@
 import { reactive, ref } from 'vue'
 import { parse, stringify } from 'yaml'
 
-export type ScenarioActionType = 'set' | 'command' | 'fault'
+export type ScenarioActionType = 'set' | 'ramp' | 'command' | 'wait' | 'fault'
 export type ScenarioTriggerType = 'at' | 'after' | 'every' | 'when'
 
 export interface ScenarioEditorStep {
@@ -13,6 +13,8 @@ export interface ScenarioEditorStep {
   dataPoint: string
   value: string | number | boolean | null
   command: string
+  from: number
+  to: number
   faultType: string
   protocol: string
   duration: string
@@ -26,7 +28,7 @@ interface ScenarioEditorApi {
 let sequence = 0
 const step = (actionType: ScenarioActionType): ScenarioEditorStep => ({
   id: `step-${++sequence}`, triggerType: 'at', triggerValue: '0s', actionType,
-  device: '', dataPoint: '', value: 0, command: '', faultType: 'spike', protocol: '', duration: '',
+  device: '', dataPoint: '', value: 0, command: '', from: 0, to: 100, faultType: 'spike', protocol: '', duration: '',
 })
 
 export function useScenarioEditor(api: ScenarioEditorApi) {
@@ -48,7 +50,9 @@ export function useScenarioEditor(api: ScenarioEditorApi) {
 
   function action(item: ScenarioEditorStep) {
     if (item.actionType === 'set') return { set: { device: item.device, datapoint: item.dataPoint, value: item.value } }
+    if (item.actionType === 'ramp') return { ramp: { device: item.device, datapoint: item.dataPoint, from: item.from, to: item.to, duration: item.duration } }
     if (item.actionType === 'command') return { command: { device: item.device, name: item.command } }
+    if (item.actionType === 'wait') return { wait: { duration: item.duration } }
     return { fault: { device: item.device || undefined, protocol: item.protocol || undefined, type: item.faultType, duration: item.duration || undefined } }
   }
 
@@ -74,7 +78,7 @@ export function useScenarioEditor(api: ScenarioEditorApi) {
     steps.splice(0)
     for (const raw of document.scenario.steps) {
       const triggerType = (['at', 'after', 'every', 'when'] as const).find(key => raw[key] !== undefined)
-      const actionType = (['set', 'command', 'fault'] as const).find(key => raw[key] !== undefined)
+      const actionType = (['set', 'ramp', 'command', 'wait', 'fault'] as const).find(key => raw[key] !== undefined)
       if (!triggerType || !actionType) throw new Error('Each visual step needs one supported trigger and action.')
       const next = step(actionType)
       next.triggerType = triggerType
@@ -84,7 +88,9 @@ export function useScenarioEditor(api: ScenarioEditorApi) {
       const value = raw[actionType] as Record<string, unknown>
       next.device = String(value.device ?? next.device)
       if (actionType === 'set') { next.dataPoint = String(value.datapoint ?? ''); next.value = value.value as ScenarioEditorStep['value'] }
+      if (actionType === 'ramp') { next.dataPoint = String(value.datapoint ?? ''); next.from = Number(value.from ?? 0); next.to = Number(value.to ?? 0); next.duration = String(value.duration ?? '') }
       if (actionType === 'command') next.command = String(value.name ?? '')
+      if (actionType === 'wait') next.duration = String(value.duration ?? '')
       if (actionType === 'fault') { next.faultType = String(value.type ?? ''); next.protocol = String(value.protocol ?? ''); next.duration = String(value.duration ?? '') }
       steps.push(next)
     }
@@ -106,9 +112,11 @@ export function useScenarioEditor(api: ScenarioEditorApi) {
     if (!steps.length) next.push('Add at least one scenario step.')
     for (const item of steps) {
       if (!item.triggerValue.trim()) next.push('Every step requires a trigger value.')
-      if (item.actionType !== 'fault' && !item.device.trim()) next.push('Set and command actions require a device.')
+      if (!['fault', 'wait'].includes(item.actionType) && !item.device.trim()) next.push('Set, ramp, and command actions require a device.')
       if (item.actionType === 'set' && !item.dataPoint.trim()) next.push('Set actions require a datapoint.')
+      if (item.actionType === 'ramp' && (!item.dataPoint.trim() || !item.duration.trim())) next.push('Ramp actions require a datapoint and duration.')
       if (item.actionType === 'command' && !item.command.trim()) next.push('Command actions require a command name.')
+      if (item.actionType === 'wait' && !item.duration.trim()) next.push('Wait actions require a duration.')
       if (item.actionType === 'fault' && !item.device.trim() && !item.protocol.trim()) next.push('Fault actions require a device or protocol target.')
     }
     errors.value = [...new Set(next)]

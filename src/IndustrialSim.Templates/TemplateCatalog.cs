@@ -16,6 +16,8 @@ public static partial class TemplateCatalog
             throw new TemplateValidationException($"Template version '{template.Version}' must be a three-part semantic version.");
         if (string.IsNullOrWhiteSpace(template.DisplayName) || string.IsNullOrWhiteSpace(template.DeviceType))
             throw new TemplateValidationException("Display name and device type are required.");
+        try { using var _ = JsonDocument.Parse(template.BehaviorJson); }
+        catch (JsonException exception) { throw new TemplateValidationException($"Behavior JSON is invalid: {exception.Message}"); }
         if (template.DataPoints.Count == 0)
             throw new TemplateValidationException("A template requires at least one datapoint.");
 

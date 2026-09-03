@@ -57,6 +57,7 @@ async function importFile(event: Event) {
       <div class="wide"><label>Description</label><input v-model="editor.draft.template.description" /></div>
       <div><label>Commands</label><input v-model="commandText" placeholder="start, stop, reset" /></div>
       <div><label>Events</label><input v-model="eventText" placeholder="overheat, alarm" /></div>
+      <div class="wide"><label>Behavior metadata JSON</label><textarea v-model="editor.draft.template.behaviorJson" class="compact-textarea" spellcheck="false"></textarea></div>
     </div></div>
 
     <div class="editor-section"><div class="section-title"><span>02</span><div><h3>Datapoints</h3><p>Typed runtime state created when this template is instantiated.</p></div><button class="primary" @click="editor.addDataPoint">Add datapoint</button></div>

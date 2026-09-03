@@ -24,6 +24,9 @@ public sealed class TemplateCatalogTests
             [new("missing", "40001", "Float", "BigEndian", "HighLow")]);
         var missing = Assert.Throws<TemplateValidationException>(() => TemplateCatalog.Validate(Template("1.2.0"), [mapping]));
         Assert.Contains("missing", missing.Message);
+
+        var behavior = Assert.Throws<TemplateValidationException>(() => TemplateCatalog.Validate(Template("1.2.0") with { BehaviorJson = "{" }, []));
+        Assert.Contains("Behavior JSON", behavior.Message);
     }
 
     [Fact]
