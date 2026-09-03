@@ -57,6 +57,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndustrialSim.Application.T
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndustrialSim.Persistence.Tests", "tests\IndustrialSim.Persistence.Tests\IndustrialSim.Persistence.Tests.csproj", "{A11C4E2D-6D44-4E0D-A100-000000000004}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndustrialSim.Templates", "src\IndustrialSim.Templates\IndustrialSim.Templates.csproj", "{A11C4E2D-6D44-4E0D-A100-000000000005}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IndustrialSim.Templates.Tests", "tests\IndustrialSim.Templates.Tests\IndustrialSim.Templates.Tests.csproj", "{A11C4E2D-6D44-4E0D-A100-000000000006}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -335,6 +339,14 @@ Global
 		{A11C4E2D-6D44-4E0D-A100-000000000004}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A11C4E2D-6D44-4E0D-A100-000000000004}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A11C4E2D-6D44-4E0D-A100-000000000004}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000005}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000005}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000005}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000005}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000006}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000006}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000006}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A11C4E2D-6D44-4E0D-A100-000000000006}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -365,5 +377,7 @@ Global
 		{A11C4E2D-6D44-4E0D-A100-000000000002} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{A11C4E2D-6D44-4E0D-A100-000000000003} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{A11C4E2D-6D44-4E0D-A100-000000000004} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{A11C4E2D-6D44-4E0D-A100-000000000005} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{A11C4E2D-6D44-4E0D-A100-000000000006} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

@@ -13,6 +13,8 @@ public sealed class IndustrialSimDbContext(DbContextOptions<IndustrialSimDbConte
     public DbSet<ScenarioCatalogEntity> Scenarios => Set<ScenarioCatalogEntity>();
     public DbSet<SettingCatalogEntity> Settings => Set<SettingCatalogEntity>();
     public DbSet<RuntimeSnapshotEntity> RuntimeSnapshots => Set<RuntimeSnapshotEntity>();
+    public DbSet<DeviceTemplateEntity> DeviceTemplates => Set<DeviceTemplateEntity>();
+    public DbSet<MappingProfileEntity> MappingProfiles => Set<MappingProfileEntity>();
 
     public async Task CommitAsync(CancellationToken cancellationToken = default) =>
         await SaveChangesAsync(cancellationToken);
@@ -55,6 +57,21 @@ public sealed class IndustrialSimDbContext(DbContextOptions<IndustrialSimDbConte
             entity.ToTable("RuntimeSnapshots");
             entity.HasKey(item => item.Id);
             entity.HasIndex(item => new { item.DeviceId, item.CreatedUtc });
+        });
+        modelBuilder.Entity<DeviceTemplateEntity>(entity =>
+        {
+            entity.ToTable("DeviceTemplates");
+            entity.HasKey(item => new { item.Id, item.Version });
+            entity.HasIndex(item => new { item.DisplayName, item.DeviceType });
+        });
+        modelBuilder.Entity<MappingProfileEntity>(entity =>
+        {
+            entity.ToTable("MappingProfiles");
+            entity.HasKey(item => new { item.TemplateId, item.TemplateVersion, item.Protocol, item.Name });
+            entity.HasOne<DeviceTemplateEntity>()
+                .WithMany()
+                .HasForeignKey(item => new { item.TemplateId, item.TemplateVersion })
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

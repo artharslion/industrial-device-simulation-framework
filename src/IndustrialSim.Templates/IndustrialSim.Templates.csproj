@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Protocol-independent versioned device template documents and validation.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../IndustrialSim.Core/IndustrialSim.Core.csproj" />
+  </ItemGroup>
+</Project>
