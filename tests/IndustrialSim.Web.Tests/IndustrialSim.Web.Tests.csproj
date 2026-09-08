@@ -24,8 +24,8 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\src\IndustrialSim.Web\wwwroot\index.html" Link="wwwroot\index.html" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\..\src\IndustrialSim.Web\wwwroot\assets\app.js" Link="wwwroot\assets\app.js" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\..\src\IndustrialSim.Web\wwwroot\assets\index.css" Link="wwwroot\assets\index.css" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\src\IndustrialSim.Web\wwwroot\theme-bootstrap.js" Link="wwwroot\theme-bootstrap.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\src\IndustrialSim.Web\wwwroot\assets\**\*" Link="wwwroot\assets\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

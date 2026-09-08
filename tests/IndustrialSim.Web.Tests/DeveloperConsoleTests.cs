@@ -34,8 +34,12 @@ public sealed class DeveloperConsoleTests
         var scriptPath = Regex.Match(html, "src=\"(?<path>/assets/[^\"]+\\.js)\"").Groups["path"].Value;
         Assert.NotEmpty(scriptPath);
         var script = await client.GetStringAsync(scriptPath);
-        var overview = await client.GetStringAsync("/assets/OverviewView.js");
-        var deviceDetails = await client.GetStringAsync("/assets/DeviceDetailsView.js");
+        var overviewPath = "/" + Regex.Match(script, "assets/OverviewView-[^\"']+\\.js").Value;
+        var detailsPath = "/" + Regex.Match(script, "assets/DeviceDetailsView-[^\"']+\\.js").Value;
+        Assert.NotEqual("/", overviewPath);
+        Assert.NotEqual("/", detailsPath);
+        var overview = await client.GetStringAsync(overviewPath);
+        var deviceDetails = await client.GetStringAsync(detailsPath);
         Assert.Contains("/templates", script, StringComparison.Ordinal);
         Assert.Contains("/scenarios", script, StringComparison.Ordinal);
         Assert.Contains("Platform overview", overview, StringComparison.Ordinal);
