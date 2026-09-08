@@ -14,6 +14,12 @@ export class ApiProblemError extends Error {
 }
 
 export async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const accessToken = sessionStorage.getItem('industrial-sim-access-token')
+  if (accessToken) {
+    const headers = new Headers(options.headers)
+    if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${accessToken}`)
+    options = { ...options, headers }
+  }
   const response = await fetch(url, options)
   const text = await response.text()
   let body: unknown = undefined
@@ -137,5 +143,15 @@ export const platformApi = {
   exportScenario: (id: string) => request<string>(`/api/v1/scenarios/${encodeURIComponent(id)}/export`),
   runScenario: (deviceId: string, scenarioId: string) => request(`/api/v1/devices/${encodeURIComponent(deviceId)}/scenarios/${encodeURIComponent(scenarioId)}/start`, { method: 'POST' }),
   users: () => request<UserSummary[]>('/api/v1/users'),
+  bootstrap: (value: { userName: string; password: string }) => request<UserSummary>('/api/v1/auth/bootstrap', json('POST', value)),
+  async login(value: { userName: string; password: string }) {
+    const response = await request<{ accessToken: string }>('/api/v1/auth/login', json('POST', value))
+    sessionStorage.setItem('industrial-sim-access-token', response.accessToken)
+    return response
+  },
+  createUser: (value: { userName: string; password: string; role: string }) => request<UserSummary>('/api/v1/users', json('POST', value)),
+  updateUserRole: (userName: string, role: string) => request<void>(`/api/v1/users/${encodeURIComponent(userName)}/role`, json('PUT', { role })),
+  deleteUser: (userName: string) => request<void>(`/api/v1/users/${encodeURIComponent(userName)}`, { method: 'DELETE' }),
+  changePassword: (value: { currentPassword: string; newPassword: string }) => request<void>('/api/v1/auth/password', json('POST', value)),
   settings: () => request<SettingSummary[]>('/api/v1/settings'),
 }

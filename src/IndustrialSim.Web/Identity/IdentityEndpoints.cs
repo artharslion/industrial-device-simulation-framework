@@ -13,6 +13,7 @@ public sealed record BootstrapRequest(string UserName, string Password);
 public sealed record LoginRequest(string UserName, string Password);
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 public sealed record CreateUserRequest(string UserName, string Password, string Role);
+public sealed record UpdateUserRoleRequest(string Role);
 public sealed record UpdateSettingRequest(JsonElement Value);
 
 public static class IdentityEndpoints
@@ -31,6 +32,7 @@ public static class IdentityEndpoints
         var users = endpoints.MapGroup("/api/v1/users").WithTags("Users").RequireAuthorization(IndustrialPolicies.Admin);
         users.MapGet("/", ListUsersAsync);
         users.MapPost("/", CreateUserAsync);
+        users.MapPut("/{userName}/role", UpdateUserRoleAsync);
         users.MapDelete("/{userName}", DeleteUserAsync);
 
         var settings = endpoints.MapGroup("/api/v1/settings").WithTags("Settings").RequireAuthorization(IndustrialPolicies.Admin);
@@ -130,6 +132,37 @@ public static class IdentityEndpoints
             return IndustrialSimProblemDetails.Result(409, "User conflict", "The current administrator cannot delete itself.", "cannotDeleteCurrentUser");
         var deleted = await userManager.DeleteAsync(user);
         return deleted.Succeeded ? Results.NoContent() : IdentityFailure(deleted, "userDeletionRejected");
+    }
+
+    private static async Task<IResult> UpdateUserRoleAsync(
+        string userName,
+        UpdateUserRoleRequest request,
+        UserManager<IndustrialSimUser> userManager,
+        RoleManager<IdentityRole> roleManager)
+    {
+        if (!IndustrialRoles.All.Contains(request.Role, StringComparer.OrdinalIgnoreCase))
+            return IndustrialSimProblemDetails.Result(400, "Invalid role", $"Role '{request.Role}' is not supported.", "invalidRole");
+        var user = await userManager.FindByNameAsync(userName);
+        if (user is null) return IndustrialSimProblemDetails.Result(404, "User not found", $"User '{userName}' was not found.", "userNotFound");
+        var canonicalRole = IndustrialRoles.All.Single(role => role.Equals(request.Role, StringComparison.OrdinalIgnoreCase));
+        if (!await roleManager.RoleExistsAsync(canonicalRole))
+        {
+            var created = await roleManager.CreateAsync(new IdentityRole(canonicalRole));
+            if (!created.Succeeded) return IdentityFailure(created, "roleCreationFailed");
+        }
+        var current = await userManager.GetRolesAsync(user);
+        if (!current.Contains(canonicalRole, StringComparer.OrdinalIgnoreCase))
+        {
+            var added = await userManager.AddToRoleAsync(user, canonicalRole);
+            if (!added.Succeeded) return IdentityFailure(added, "roleAssignmentFailed");
+        }
+        var obsolete = current.Where(role => !role.Equals(canonicalRole, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (obsolete.Length > 0)
+        {
+            var removed = await userManager.RemoveFromRolesAsync(user, obsolete);
+            if (!removed.Succeeded) return IdentityFailure(removed, "roleAssignmentFailed");
+        }
+        return Results.NoContent();
     }
 
     private static async Task<IResult> UpsertSettingAsync(

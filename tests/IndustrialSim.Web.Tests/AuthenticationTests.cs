@@ -79,7 +79,12 @@ public sealed class AuthenticationTests
         Assert.Contains("viewer", users, StringComparison.Ordinal);
         Assert.DoesNotContain("passwordHash", users, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("accessToken", users, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(HttpStatusCode.NoContent, (await fixture.Client.PutAsJsonAsync("/api/v1/users/operator/role", new { role = "Viewer" })).StatusCode);
+        Assert.Contains("Viewer", await fixture.Client.GetStringAsync("/api/v1/users"), StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.NoContent, (await fixture.Client.DeleteAsync("/api/v1/users/viewer")).StatusCode);
+        var selfDelete = await fixture.Client.DeleteAsync("/api/v1/users/admin");
+        Assert.Equal(HttpStatusCode.Conflict, selfDelete.StatusCode);
+        Assert.Contains("cannotDeleteCurrentUser", await selfDelete.Content.ReadAsStringAsync(), StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PutAsJsonAsync("/api/v1/settings/ui.refreshSeconds", new { value = 2 })).StatusCode);
         var secret = await fixture.Client.PutAsJsonAsync("/api/v1/settings/apiToken", new { value = "do-not-store" });
         Assert.Equal(HttpStatusCode.BadRequest, secret.StatusCode);
