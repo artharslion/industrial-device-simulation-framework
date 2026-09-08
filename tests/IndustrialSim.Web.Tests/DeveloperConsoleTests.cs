@@ -35,11 +35,13 @@ public sealed class DeveloperConsoleTests
         Assert.NotEmpty(scriptPath);
         var script = await client.GetStringAsync(scriptPath);
         var overview = await client.GetStringAsync("/assets/OverviewView.js");
+        var deviceDetails = await client.GetStringAsync("/assets/DeviceDetailsView.js");
         Assert.Contains("/templates", script, StringComparison.Ordinal);
         Assert.Contains("/scenarios", script, StringComparison.Ordinal);
-        Assert.Contains("Runtime command center", overview, StringComparison.Ordinal);
-        Assert.Contains("Quick scenario", overview, StringComparison.Ordinal);
-        Assert.Contains("Fault injection", overview, StringComparison.Ordinal);
+        Assert.Contains("Platform overview", overview, StringComparison.Ordinal);
+        Assert.Contains("Create device", overview, StringComparison.Ordinal);
+        Assert.DoesNotContain("Scenario YAML", overview, StringComparison.Ordinal);
+        Assert.Contains("Save and replace host", deviceDetails, StringComparison.Ordinal);
     }
 
     [Fact]
