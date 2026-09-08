@@ -24,8 +24,9 @@ public static class V1Endpoints
         api.MapVisualModelingEndpoints();
 
         api.MapGet("/devices", (ISimulationRegistry registry) => Results.Ok(registry.List()));
-        api.MapGet("/devices/{deviceId}", (string deviceId, ISimulationRegistry registry) => Results.Ok(Summary(registry.Get(deviceId))));
+        api.MapGet("/devices/{deviceId}", DeviceDetailsAsync);
         api.MapPost("/devices", CreateDeviceAsync).RequireAuthorization(IndustrialPolicies.Admin);
+        api.MapPut("/devices/{deviceId}", UpdateDeviceAsync).RequireAuthorization(IndustrialPolicies.Admin);
         api.MapDelete("/devices/{deviceId}", RemoveDeviceAsync).RequireAuthorization(IndustrialPolicies.Admin);
         api.MapPost("/devices/{deviceId}/{operation}", RunLifecycleAsync).RequireAuthorization(IndustrialPolicies.Operator);
         api.MapPost("/devices/{deviceId}/tick/{seconds:double}", Tick).RequireAuthorization(IndustrialPolicies.Operator);
@@ -102,6 +103,73 @@ public static class V1Endpoints
             throw;
         }
         return Results.Created($"/api/v1/devices/{request.Id}", Summary(handle));
+    }
+
+    private static async Task<IResult> DeviceDetailsAsync(
+        string deviceId,
+        ISimulationRegistry registry,
+        IDeviceCatalogRepository repository,
+        IScenarioCatalogRepository scenarios,
+        CancellationToken cancellationToken)
+    {
+        var handle = registry.Get(deviceId);
+        var catalog = await repository.FindAsync(deviceId, cancellationToken);
+        return Results.Ok(new
+        {
+            summary = Summary(handle),
+            runtime = Runtime(handle.Host),
+            state = handle.Host.State.Snapshot().ToDictionary(item => item.Key, item => item.Value?.Value),
+            definition = new
+            {
+                id = handle.DeviceId,
+                type = handle.Host.Runtime.Definition.Type,
+                deterministic = handle.Host.IsDeterministic,
+                seed = handle.Host.Seed,
+                version = catalog?.Version ?? 0,
+                dataPoints = handle.Host.Runtime.Definition.DataPoints.Select(point => new
+                {
+                    name = point.Name,
+                    dataType = point.DataType.ToString(),
+                    access = point.Access.ToString(),
+                    initial = point.InitialValue?.Value,
+                    unit = point.Unit,
+                    description = point.Description
+                }),
+                portBindings = handle.PortBindings.Select(binding => new { protocol = binding.Protocol, port = binding.Port })
+            },
+            protocols = handle.Host.Protocols.Select(protocol => new { name = protocol.Key, running = protocol.Value.IsRunning }),
+            scenarios = new { active = handle.Host.ActiveScenarioName, running = handle.Host.ScenarioRunner?.IsRunning == true, available = await scenarios.ListAsync(cancellationToken) },
+            faults = handle.Host.FaultManager.ActiveFaults,
+            events = handle.Host.Events.TakeLast(100)
+        });
+    }
+
+    private static async Task<IResult> UpdateDeviceAsync(
+        string deviceId,
+        CreateDeviceRequest request,
+        ISimulationRegistry registry,
+        IDeviceCatalogRepository repository,
+        IndustrialSimDbContext db,
+        CancellationToken cancellationToken)
+    {
+        if (!deviceId.Equals(request.Id, StringComparison.OrdinalIgnoreCase))
+            return IndustrialSimProblemDetails.Result(400, "Validation failed", "The request device id must match the route device id.", "deviceIdMismatch");
+        if (registry.Get(deviceId).Host.IsRunning)
+            return IndustrialSimProblemDetails.Result(409, "Simulation conflict", $"Simulation '{deviceId}' must be stopped before its definition can be replaced.", "deviceMustBeStopped");
+        if (request.DataPoints.Count == 0)
+            return IndustrialSimProblemDetails.Result(400, "Validation failed", "At least one data point is required.", "invalidDevice");
+
+        var definition = new DeviceDefinition(new DeviceId(request.Id), request.Type, request.DataPoints.Select(ToDefinition), [], []);
+        var launch = new DeviceLaunchDefinition(definition, new SimulationHostOptions(request.Deterministic, request.Seed), request.PortBindings?.Select(binding => new ProtocolPortBinding(binding.Protocol, binding.Port)).ToArray());
+        var item = new DeviceCatalogItem(request.Id, JsonSerializer.Serialize(request), "Stopped", request.Version);
+        var handle = await registry.ReplaceAsync(deviceId, launch, async token =>
+        {
+            await repository.UpsertAsync(item, token);
+            await db.CommitAsync(token);
+        }, cancellationToken);
+        return Results.Ok(await repository.FindAsync(handle.DeviceId, cancellationToken) is { } saved
+            ? new { details = Summary(handle), version = saved.Version }
+            : new { details = Summary(handle), version = request.Version + 1 });
     }
 
     private static async Task<IResult> RemoveDeviceAsync(

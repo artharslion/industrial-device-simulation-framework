@@ -91,6 +91,37 @@ public sealed class V1ApiContractTests
         Assert.True(response.Headers.Contains("Sunset"));
     }
 
+    [Fact]
+    public async Task Device_details_and_stopped_only_definition_replacement_are_available()
+    {
+        await using var fixture = await V1Fixture.StartAsync();
+        Assert.Equal(HttpStatusCode.Created, (await fixture.Client.PostAsJsonAsync("/api/v1/devices", DeviceRequest("editable"))).StatusCode);
+        using var details = JsonDocument.Parse(await fixture.Client.GetStringAsync("/api/v1/devices/editable"));
+        Assert.Equal(1, details.RootElement.GetProperty("definition").GetProperty("version").GetInt64());
+
+        await fixture.Client.PostAsync("/api/v1/devices/editable/start", null);
+        var runningEdit = await fixture.Client.PutAsJsonAsync("/api/v1/devices/editable", new
+        {
+            id = "editable", type = "custom", deterministic = true, seed = 2, version = 1,
+            dataPoints = new[] { new { name = "temperature", dataType = "Double", access = "ReadWrite", initial = 21.5 } }
+        });
+        Assert.Equal(HttpStatusCode.Conflict, runningEdit.StatusCode);
+        using (var problem = JsonDocument.Parse(await runningEdit.Content.ReadAsStringAsync()))
+            Assert.Equal("deviceMustBeStopped", problem.RootElement.GetProperty("errorCode").GetString());
+
+        await fixture.Client.PostAsync("/api/v1/devices/editable/stop", null);
+        var update = await fixture.Client.PutAsJsonAsync("/api/v1/devices/editable", new
+        {
+            id = "editable", type = "sensor", deterministic = true, seed = 2, version = 1,
+            dataPoints = new[] { new { name = "temperature", dataType = "Double", access = "ReadWrite", initial = 21.5 } }
+        });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        using var updated = JsonDocument.Parse(await fixture.Client.GetStringAsync("/api/v1/devices/editable"));
+        Assert.Equal("sensor", updated.RootElement.GetProperty("definition").GetProperty("type").GetString());
+        Assert.Equal(2, updated.RootElement.GetProperty("definition").GetProperty("version").GetInt64());
+        Assert.Equal(21.5, updated.RootElement.GetProperty("state").GetProperty("temperature").GetDouble());
+    }
+
     private static object DeviceRequest(string id) => new
     {
         id,

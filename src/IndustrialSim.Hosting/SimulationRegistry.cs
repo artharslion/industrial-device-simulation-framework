@@ -55,6 +55,7 @@ public interface ISimulationRegistry
     event Action<SimulationHandle>? SimulationAdded;
     Task<SimulationHandle> CreateAsync(DeviceLaunchDefinition definition, CancellationToken cancellationToken = default);
     Task<SimulationHandle> AddAsync(SimulationHost host, IReadOnlyList<ProtocolPortBinding>? portBindings = null, CancellationToken cancellationToken = default);
+    Task<SimulationHandle> ReplaceAsync(string deviceId, DeviceLaunchDefinition definition, Func<CancellationToken, Task> commitControlPlane, CancellationToken cancellationToken = default);
     Task StartAsync(string deviceId, CancellationToken cancellationToken = default);
     Task StopAsync(string deviceId, CancellationToken cancellationToken = default);
     Task RemoveAsync(string deviceId, CancellationToken cancellationToken = default);
@@ -137,6 +138,68 @@ public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
         finally
         {
             _catalogGate.Release();
+        }
+    }
+
+    public async Task<SimulationHandle> ReplaceAsync(
+        string deviceId,
+        DeviceLaunchDefinition definition,
+        Func<CancellationToken, Task> commitControlPlane,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(commitControlPlane);
+        if (!definition.Definition.Id.Value.Equals(deviceId, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Replacement definition id must match the target device id.", nameof(definition));
+
+        var bindings = NormalizeBindings(definition.PortBindings);
+        var candidateHost = SimulationHost.Create(definition.Definition, definition.Options);
+        var candidate = new SimulationHandle(candidateHost, bindings);
+        var committed = false;
+
+        await _catalogGate.WaitAsync(cancellationToken);
+        try
+        {
+            var current = Get(deviceId);
+            await current.LifecycleGate.WaitAsync(cancellationToken);
+            try
+            {
+                if (current.Host.IsRunning)
+                    throw new SimulationConflictException($"Simulation '{deviceId}' must be stopped before its definition can be replaced.", "deviceMustBeStopped");
+                foreach (var binding in bindings)
+                    if (_reservedPorts.TryGetValue(binding.Port, out var owner) && !owner.Equals(deviceId, StringComparison.OrdinalIgnoreCase))
+                        throw new SimulationConflictException($"Port {binding.Port} for protocol '{binding.Protocol}' is already reserved by simulation '{owner}'.", "portConflict");
+
+                _simulations[deviceId] = candidate;
+                foreach (var binding in current.PortBindings) _reservedPorts.Remove(binding.Port);
+                foreach (var binding in bindings) _reservedPorts[binding.Port] = deviceId;
+                try
+                {
+                    await commitControlPlane(cancellationToken);
+                    committed = true;
+                    SimulationAdded?.Invoke(candidate);
+                }
+                catch
+                {
+                    _simulations[deviceId] = current;
+                    foreach (var binding in bindings) _reservedPorts.Remove(binding.Port);
+                    foreach (var binding in current.PortBindings) _reservedPorts[binding.Port] = deviceId;
+                    throw;
+                }
+
+                await current.Host.DisposeAsync();
+                return candidate;
+            }
+            finally
+            {
+                current.LifecycleGate.Release();
+            }
+        }
+        finally
+        {
+            _catalogGate.Release();
+            if (!committed) await candidateHost.DisposeAsync();
         }
     }
 

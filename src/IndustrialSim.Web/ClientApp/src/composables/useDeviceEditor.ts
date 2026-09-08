@@ -24,6 +24,18 @@ export function useDeviceEditor() {
   function addBinding() { form.portBindings.push({ protocol: 'opcua', port: 4840 }) }
   function removeBinding(index: number) { form.portBindings.splice(index, 1) }
 
+  function load(value: DeviceCreateRequest) {
+    form.id = value.id
+    form.type = value.type
+    form.deterministic = value.deterministic
+    form.seed = value.seed
+    form.dataPoints.splice(0, form.dataPoints.length, ...value.dataPoints.map(point => ({
+      name: point.name, dataType: point.dataType, access: point.access,
+      initialText: point.initial === null ? '' : String(point.initial), unit: point.unit ?? '', description: point.description ?? '',
+    })))
+    form.portBindings.splice(0, form.portBindings.length, ...value.portBindings.map(binding => ({ ...binding })))
+  }
+
   function scalar(row: EditableDataPoint): ScalarValue {
     const value = row.initialText.trim()
     if (row.dataType.toLowerCase() === 'string') return value
@@ -54,5 +66,5 @@ export function useDeviceEditor() {
     }
   }
 
-  return { form, addDataPoint, removeDataPoint, addBinding, removeBinding, toRequest }
+  return { form, addDataPoint, removeDataPoint, addBinding, removeBinding, load, toRequest }
 }

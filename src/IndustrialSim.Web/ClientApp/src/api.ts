@@ -1,7 +1,7 @@
 import type { InjectionKey } from 'vue'
 import type {
-  DeviceCreateRequest, DeviceSummary, DeviceTemplateDocument, FaultRequest, ProtocolStatus, ProtocolSummary,
-  ScenarioCatalogItem, SessionSummary, SettingSummary, TemplatePackage, UserSummary, RuntimeSnapshot,
+  DeviceCreateRequest, DeviceDetails, DeviceSummary, DeviceTemplateDocument, FaultRequest, ProtocolStatus, ProtocolSummary,
+  ScenarioCatalogItem, SessionSummary, SettingSummary, TemplatePackage, UserSummary, RuntimeSnapshot, RuntimeStatus, ScalarValue,
 } from './types'
 
 interface ProblemDetails { title?: string; detail?: string; errorCode?: string; error?: unknown }
@@ -116,6 +116,14 @@ export const platformApi = {
   session: () => request<SessionSummary>('/api/v1/auth/session'),
   devices: () => request<DeviceSummary[]>('/api/v1/devices'),
   createDevice: (value: DeviceCreateRequest) => request<DeviceSummary>('/api/v1/devices', json('POST', value)),
+  device: (id: string) => request<DeviceDetails>(`/api/v1/devices/${encodeURIComponent(id)}`),
+  updateDevice: (id: string, value: DeviceCreateRequest) => request(`/api/v1/devices/${encodeURIComponent(id)}`, json('PUT', value)),
+  deleteDevice: (id: string) => request<void>(`/api/v1/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  lifecycle: (id: string, operation: string) => request<RuntimeStatus>(`/api/v1/devices/${encodeURIComponent(id)}/${operation}`, { method: 'POST' }),
+  tick: (id: string, seconds: number) => request(`/api/v1/devices/${encodeURIComponent(id)}/tick/${seconds}`, { method: 'POST' }),
+  writeState: (id: string, point: string, value: ScalarValue) => request(`/api/v1/devices/${encodeURIComponent(id)}/state/${encodeURIComponent(point)}`, json('PUT', value)),
+  activateDeviceFault: (id: string, value: FaultRequest) => request(`/api/v1/devices/${encodeURIComponent(id)}/faults`, json('POST', value)),
+  recoverDeviceFault: (id: string, faultId: string) => request(`/api/v1/devices/${encodeURIComponent(id)}/faults/${encodeURIComponent(faultId)}/recover`, { method: 'POST' }),
   protocols: () => request<ProtocolSummary[]>('/api/v1/protocols'),
   templates: (query = '') => request<DeviceTemplateDocument[]>(`/api/v1/templates${query ? `?q=${encodeURIComponent(query)}` : ''}`),
   template: (id: string, version: string) => request<TemplatePackage>(`/api/v1/templates/${encodeURIComponent(id)}/${encodeURIComponent(version)}`),

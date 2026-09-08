@@ -9,7 +9,8 @@ public sealed record CreateDeviceRequest(
     IReadOnlyList<CreateDataPointRequest> DataPoints,
     bool Deterministic = false,
     int Seed = 0,
-    IReadOnlyList<CreatePortBindingRequest>? PortBindings = null);
+    IReadOnlyList<CreatePortBindingRequest>? PortBindings = null,
+    long Version = 0);
 public sealed record CreatePortBindingRequest(string Protocol, int Port);
 public sealed record BatchLifecycleRequest(IReadOnlyList<string> DeviceIds, string Operation);
 public sealed record UpsertScenarioRequest(string Name, string Yaml, long Version = 0, string EditorJson = "{}");

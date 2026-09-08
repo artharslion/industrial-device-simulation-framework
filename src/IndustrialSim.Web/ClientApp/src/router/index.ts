@@ -4,6 +4,7 @@ import ConsoleLayout from '../layouts/ConsoleLayout.vue'
 export const routes: RouteRecordRaw[] = [
   { path: '/', name: 'overview', component: () => import('../views/OverviewView.vue'), meta: { navigation: true, label: 'Overview', section: 'Operate' } },
   { path: '/devices', name: 'devices', component: () => import('../views/DevicesView.vue'), meta: { navigation: true, label: 'Devices', section: 'Operate' } },
+  { path: '/devices/:deviceId', name: 'device-details', component: () => import('../views/DeviceDetailsView.vue'), meta: { label: 'Device details', section: 'Operate' } },
   { path: '/templates', name: 'templates', component: () => import('../views/TemplatesView.vue'), meta: { navigation: true, label: 'Templates', section: 'Model' } },
   { path: '/scenarios', name: 'scenarios', component: () => import('../views/ScenariosView.vue'), meta: { navigation: true, label: 'Scenarios', section: 'Model' } },
   { path: '/protocols', name: 'protocols', component: () => import('../views/ProtocolsView.vue'), meta: { navigation: true, label: 'Protocols', section: 'Observe' } },

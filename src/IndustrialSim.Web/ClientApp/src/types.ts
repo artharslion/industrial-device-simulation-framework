@@ -78,6 +78,18 @@ export interface DeviceCreateRequest {
   seed: number
   dataPoints: DeviceDataPointRequest[]
   portBindings: Array<{ protocol: string; port: number }>
+  version?: number
+}
+
+export interface DeviceDetails {
+  summary: DeviceSummary
+  runtime: RuntimeStatus
+  state: Record<string, ScalarValue>
+  definition: DeviceCreateRequest & { version: number }
+  protocols: Array<{ name: string; running: boolean }>
+  scenarios: { active?: string | null; running: boolean; available: ScenarioCatalogItem[] }
+  faults: ActiveFault[]
+  events: RuntimeEvent[]
 }
 
 export interface ProtocolSummary {
