@@ -3,7 +3,7 @@ import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { describe, expect, it, vi } from 'vitest'
 import App from './App.vue'
-import { developerConsoleApiKey } from './api'
+import { developerConsoleApiKey, platformApi } from './api'
 import type { DeveloperConsoleApi } from './api'
 import { runtimeLiveConnectionKey } from './composables/useRuntimeSignalR'
 import ConsoleLayout from './layouts/ConsoleLayout.vue'
@@ -27,6 +27,9 @@ const api: DeveloperConsoleApi = {
 
 describe('developer console', () => {
   it('renders the operational workspace and runtime controls', async () => {
+    vi.spyOn(platformApi, 'devices').mockResolvedValue([{ deviceId: 'pump-001', deviceType: 'pump', isRunning: true, deterministic: true, seed: 1, simulationTime: '00:00:01' }])
+    vi.spyOn(platformApi, 'protocols').mockResolvedValue([])
+    vi.spyOn(platformApi, 'device').mockResolvedValue({ summary: { deviceId: 'pump-001', deviceType: 'pump', isRunning: true, deterministic: true, seed: 1, simulationTime: '00:00:01' }, runtime: { state: 'Running', time: '00:00:01', deviceId: 'pump-001', deviceType: 'pump', deterministic: true, seed: 1, scenario: { name: null, running: false }, activeFaults: 0 }, state: { speed: 900 }, definition: { id: 'pump-001', type: 'pump', deterministic: true, seed: 1, version: 1, dataPoints: [], portBindings: [] }, protocols: [], scenarios: { running: false, available: [] }, faults: [], events: [] })
     const live = { start: vi.fn().mockResolvedValue(undefined), stop: vi.fn().mockResolvedValue(undefined) }
     const testRouter = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: ConsoleLayout, children: routes }] })
     await testRouter.push('/'); await testRouter.isReady()
@@ -34,9 +37,9 @@ describe('developer console', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('pump-001'))
 
     expect(wrapper.find('[aria-label="Workspace navigation"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('StateStore datapoints')
-    expect(wrapper.text()).toContain('Quick scenario')
-    expect(wrapper.text()).toContain('Fault injection')
+    expect(wrapper.text()).toContain('Platform overview')
+    expect(wrapper.text()).toContain('Create device')
+    expect(wrapper.text()).not.toContain('Scenario YAML')
     expect(wrapper.findAll('.nav-item')).toHaveLength(8)
   })
 })

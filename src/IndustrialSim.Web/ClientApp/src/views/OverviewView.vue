@@ -1,68 +1,40 @@
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted } from 'vue'
-import { developerConsoleApi, developerConsoleApiKey } from '../api'
-import ConsolePanel from '../components/ConsolePanel.vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
+import { platformApi } from '../api'
 import PageHeader from '../components/PageHeader.vue'
+import ResourceState from '../components/ResourceState.vue'
 import StatusCard from '../components/StatusCard.vue'
-import { useDeveloperConsole } from '../composables/useDeveloperConsole'
 import { runtimeLiveConnection, runtimeLiveConnectionKey } from '../composables/useRuntimeSignalR'
-import type { RuntimeEvent, ScalarValue } from '../types'
+import { useWorkspaceStore } from '../stores/workspace'
+import type { DeviceDetails, DeviceSummary, ProtocolSummary, RuntimeEvent } from '../types'
 
-const consoleApi = inject(developerConsoleApiKey, developerConsoleApi)
-const liveConnection = inject(runtimeLiveConnectionKey, runtimeLiveConnection)
-const consoleState = useDeveloperConsole(consoleApi, liveConnection)
-const stateEntries = computed(() => Object.entries(consoleState.state.value))
-const recentEvents = computed(() => consoleState.events.value.slice(-12).reverse())
-const busy = computed(() => consoleState.pendingAction.value !== null)
-const valueType = (value: ScalarValue) => value === null ? 'null' : typeof value
-const eventType = (event: RuntimeEvent) => event.eventType ?? event.type ?? (event.dataPointId ? 'DataPointChanged' : 'RuntimeEvent')
-const faultCategory = (category: number | string) => typeof category === 'string' ? category : ['Data', 'Device', 'Network'][category] ?? String(category)
+const workspace = useWorkspaceStore(); const live = inject(runtimeLiveConnectionKey, runtimeLiveConnection)
+const devices = ref<DeviceSummary[]>([]); const details = ref<DeviceDetails[]>([]); const protocols = ref<ProtocolSummary[]>([]); const loading = ref(true); const error = ref(''); let poll: number | undefined
+const running = computed(() => devices.value.filter(device => device.isRunning).length)
+const stopped = computed(() => devices.value.length - running.value)
+const activeFaults = computed(() => details.value.reduce((sum, item) => sum + item.faults.length, 0))
+const protocolOnline = computed(() => protocols.value.flatMap(item => item.configured).filter(item => item.running).length)
+const protocolTotal = computed(() => protocols.value.reduce((sum, item) => sum + item.configured.length + item.reserved.length, 0))
+const selected = computed(() => details.value.find(item => item.summary.deviceId === workspace.selectedDeviceId) ?? details.value[0] ?? null)
+const recentEvents = computed(() => details.value.flatMap(item => item.events.map(event => ({ deviceId: item.summary.deviceId, event }))).slice(-8).reverse())
+const noteworthy = computed(() => recentEvents.value.filter(item => /error|fault|fail|stop/i.test(JSON.stringify(item.event))).slice(0, 4))
 
-onMounted(async () => { await consoleState.refresh(); await consoleState.startLiveUpdates() })
-onBeforeUnmount(() => { void consoleState.stopLiveUpdates() })
+async function load(silent = false) { if (!silent) loading.value = true; try { devices.value = await platformApi.devices(); protocols.value = await platformApi.protocols(); details.value = await Promise.all(devices.value.map(device => platformApi.device(device.deviceId))); if (!workspace.selectedDeviceId && devices.value[0]) workspace.selectedDeviceId = devices.value[0].deviceId; error.value = '' } catch (cause) { error.value = cause instanceof Error ? cause.message : String(cause) } finally { loading.value = false } }
+function beginPolling() { if (!poll) poll = window.setInterval(() => void load(true), 5000) }
+function stopPolling() { if (poll) window.clearInterval(poll); poll = undefined }
+const eventName = (event: RuntimeEvent) => event.eventType ?? event.type ?? 'RuntimeEvent'
+onMounted(async () => { await load(); try { await live.start(() => void load(true), beginPolling, stopPolling) } catch { beginPolling() } })
+onBeforeUnmount(() => { stopPolling(); void live.stop() })
 </script>
 
-<template>
-  <main class="content">
-    <PageHeader eyebrow="Live operations" title="Runtime command center" description="Inspect StateStore, control deterministic time, run scenarios, and recover injected faults without leaving the shared runtime." />
-    <div v-if="consoleState.error.value" class="inline-error" role="alert">{{ consoleState.error.value }}</div>
-    <section class="status-grid" aria-label="Runtime status">
-      <StatusCard label="Runtime" :value="consoleState.runtime.value.state" :status="consoleState.runtime.value.state" />
-      <StatusCard label="OPC UA" :value="consoleState.protocols.value.opcua ? 'Online' : 'Offline'" :status="consoleState.protocols.value.opcua ? 'running' : 'stopped'" />
-      <StatusCard label="Modbus TCP" :value="consoleState.protocols.value.modbus ? 'Online' : 'Offline'" :status="consoleState.protocols.value.modbus ? 'running' : 'stopped'" />
-      <StatusCard label="Activity" :value="consoleState.activity.value" :status="consoleState.activity.value === 'Idle' ? 'idle' : 'active'" />
-    </section>
-    <div class="dashboard-grid">
-      <ConsolePanel class="state-panel" title="StateStore datapoints" :meta="consoleState.runtime.value.time">
-        <div class="panel-body table-wrap"><table><thead><tr><th>Signal</th><th>Type</th><th>Runtime value</th></tr></thead><tbody>
-          <tr v-if="stateEntries.length === 0"><td colspan="3">No datapoints</td></tr>
-          <tr v-for="[name, value] in stateEntries" :key="name"><td>{{ name }}</td><td><span class="type-badge">{{ valueType(value) }}</span></td><td><code>{{ JSON.stringify(value) }}</code></td></tr>
-        </tbody></table></div>
-      </ConsolePanel>
-      <ConsolePanel class="runtime-panel" title="Runtime control" :meta="consoleState.runtime.value.deviceId">
-        <div class="panel-body"><p class="runtime-copy">Lifecycle commands always execute on the backend-owned SimulationHost.</p><div class="controls">
-          <button class="primary" :disabled="busy" @click="consoleState.runRuntimeCommand('start')">Start / Resume</button>
-          <button :disabled="busy" @click="consoleState.runRuntimeCommand('pause')">Pause</button>
-          <button class="danger" :disabled="busy" @click="consoleState.runRuntimeCommand('stop')">Stop</button>
-          <button :disabled="busy" @click="consoleState.runRuntimeCommand('reset')">Reset</button>
-          <button :disabled="busy || !consoleState.runtime.value.deterministic" @click="consoleState.tick">Advance 1s</button>
-        </div></div>
-      </ConsolePanel>
-      <ConsolePanel class="events-panel" title="Recent runtime events" meta="SignalR ordered">
-        <div class="event-terminal"><div v-if="recentEvents.length === 0" class="event-empty">Waiting for runtime events…</div>
-          <div v-for="(event, index) in recentEvents" :key="index" class="event-row"><span class="event-time">{{ index + 1 }}</span><span class="event-type">{{ eventType(event) }}</span><span class="event-data">{{ JSON.stringify(event) }}</span></div>
-        </div>
-      </ConsolePanel>
-      <ConsolePanel class="scenario-panel" title="Quick scenario" :meta="consoleState.runtime.value.scenario.running ? 'Running' : 'Stopped'">
-        <div class="panel-body"><label for="scenario-yaml">Scenario YAML</label><textarea id="scenario-yaml" v-model="consoleState.scenarioYaml.value" spellcheck="false"></textarea><div class="controls action-row">
-          <button class="primary" :disabled="busy" @click="consoleState.runScenario">Run scenario</button><button class="danger" :disabled="busy || !consoleState.runtime.value.scenario.running" @click="consoleState.stopScenario">Stop</button>
-        </div></div>
-      </ConsolePanel>
-      <ConsolePanel class="fault-panel" title="Fault injection" meta="Data · Device · Network">
-        <div class="panel-body"><div class="form-grid"><div><label>Category</label><select v-model="consoleState.faultForm.category"><option>Data</option><option>Device</option><option>Network</option></select></div><div><label>Type</label><input v-model="consoleState.faultForm.type" /></div><div><label>Target</label><input v-model="consoleState.faultForm.target" /></div><div><label>Parameter</label><input v-model="consoleState.faultForm.parameter" /></div><div class="wide"><button class="danger" :disabled="busy" @click="consoleState.activateFault">Activate fault</button></div></div>
-          <div class="fault-list"><div v-if="consoleState.faults.value.length === 0" class="hint">No active faults.</div><div v-for="fault in consoleState.faults.value" :key="fault.id" class="fault-row"><span>{{ fault.id }} · {{ faultCategory(fault.category) }} · {{ fault.type }}</span><button @click="consoleState.recoverFault(fault.id)">Recover</button></div></div>
-        </div>
-      </ConsolePanel>
+<template><main class="content"><PageHeader eyebrow="Workspace" title="Platform overview" description="See fleet health, recent activity, and the next useful action. Advanced editors live on their dedicated pages." />
+  <div v-if="error" class="inline-error" role="alert">{{ error }}</div>
+  <ResourceState :loading="loading" :error="''" :empty="false"><section class="status-grid" aria-label="Fleet status"><StatusCard label="Devices" :value="String(devices.length)" status="active" /><StatusCard label="Running" :value="String(running)" :status="running ? 'running' : 'idle'" /><StatusCard label="Stopped" :value="String(stopped)" :status="stopped ? 'stopped' : 'idle'" /><StatusCard label="Active faults" :value="String(activeFaults)" :status="activeFaults ? 'error' : 'idle'" /></section>
+    <section v-if="devices.length === 0" class="welcome-empty"><span class="eyebrow">First run</span><h2>Create your first simulation device</h2><p>Start with a quick logical definition or instantiate a reusable template. You can add scenarios and faults after the device exists.</p><div class="controls"><RouterLink class="button-link" to="/devices">Create device</RouterLink><RouterLink class="button-link secondary-link" to="/templates">Create template</RouterLink></div></section>
+    <div v-else class="overview-grid"><section class="panel overview-health"><header class="panel-head"><div class="panel-title"><i class="panel-icon"></i><h2>Protocol health</h2></div><small>{{ protocolOnline }} online / {{ protocolTotal }} configured or reserved</small></header><div class="panel-body"><p class="runtime-copy">Protocol adapters expose the same logical StateStore. A network fault does not stop device simulation.</p><div class="protocol-pills"><template v-for="row in protocols" :key="row.deviceId"><span v-for="item in row.configured" :key="`${row.deviceId}-${item.name}`" :class="{ online: item.running }">{{ row.deviceId }} · {{ item.name }} · {{ item.running ? 'online' : 'offline' }}</span><span v-for="item in row.reserved" :key="`${row.deviceId}-${item.name}-${item.port}`">{{ row.deviceId }} · {{ item.name }} : {{ item.port }}</span></template></div></div></section>
+      <section class="panel overview-selected"><header class="panel-head"><div class="panel-title"><i class="panel-icon"></i><h2>Selected device</h2></div><small>{{ selected?.summary.deviceId }}</small></header><div class="panel-body" v-if="selected"><select v-model="workspace.selectedDeviceId" aria-label="Selected device"><option v-for="device in devices" :key="device.deviceId" :value="device.deviceId">{{ device.deviceId }}</option></select><h3>{{ selected.summary.deviceType }} · {{ selected.runtime.state }}</h3><p class="runtime-copy">{{ Object.keys(selected.state).length }} datapoints · {{ selected.faults.length }} active faults · simulation time {{ selected.summary.simulationTime }}</p><RouterLink class="button-link" :to="`/devices/${encodeURIComponent(selected.summary.deviceId)}`">Open device details</RouterLink></div></section>
+      <section class="panel overview-events"><header class="panel-head"><div class="panel-title"><i class="panel-icon"></i><h2>Recent runtime events</h2></div><small>SignalR live · polling fallback</small></header><div class="event-terminal"><div v-if="recentEvents.length === 0" class="event-empty">No runtime events yet. Start a device or run a scenario to create activity.</div><div v-for="(item,index) in recentEvents" :key="index" class="event-row"><span class="event-time">{{ item.deviceId }}</span><span class="event-type">{{ eventName(item.event) }}</span><span class="event-data">{{ JSON.stringify(item.event) }}</span></div></div></section>
+      <section class="panel overview-errors"><header class="panel-head"><div class="panel-title"><i class="panel-icon"></i><h2>Errors and fault activity</h2></div><small>{{ activeFaults }} active</small></header><div class="panel-body"><p v-if="noteworthy.length === 0" class="hint">No recent error, failure, fault, or stop events.</p><div v-for="(item,index) in noteworthy" :key="index" class="fault-row"><span>{{ item.deviceId }} · {{ eventName(item.event) }}</span></div><p class="runtime-copy">{{ activeFaults }} active fault{{ activeFaults === 1 ? '' : 's' }} across the fleet.</p></div></section>
     </div>
-  </main>
-</template>
+    <section class="quick-links"><RouterLink to="/devices"><strong>Create device</strong><span>Define and launch a SimulationHost.</span></RouterLink><RouterLink to="/templates"><strong>Create template</strong><span>Build a reusable, versioned definition.</span></RouterLink><RouterLink to="/scenarios"><strong>Create scenario</strong><span>Model deterministic runtime actions.</span></RouterLink><RouterLink to="/events"><strong>View faults/events</strong><span>Inspect observable runtime activity.</span></RouterLink></section>
+  </ResourceState></main></template>
