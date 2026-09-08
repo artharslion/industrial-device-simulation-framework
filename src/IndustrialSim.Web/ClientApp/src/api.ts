@@ -1,6 +1,6 @@
 import type { InjectionKey } from 'vue'
 import type {
-  DeviceCreateRequest, DeviceDetails, DeviceSummary, DeviceTemplateDocument, FaultRequest, ProtocolStatus, ProtocolSummary,
+  DeviceCreateRequest, DeviceDetails, DeviceSummary, DeviceTemplateDocument, EffectiveSetting, FaultRequest, ProtocolStatus, ProtocolSummary,
   ScenarioCatalogItem, SessionSummary, SettingSummary, TemplatePackage, UserSummary, RuntimeSnapshot, RuntimeStatus, ScalarValue,
 } from './types'
 
@@ -154,4 +154,6 @@ export const platformApi = {
   deleteUser: (userName: string) => request<void>(`/api/v1/users/${encodeURIComponent(userName)}`, { method: 'DELETE' }),
   changePassword: (value: { currentPassword: string; newPassword: string }) => request<void>('/api/v1/auth/password', json('POST', value)),
   settings: () => request<SettingSummary[]>('/api/v1/settings'),
+  effectiveSettings: () => request<EffectiveSetting[]>('/api/v1/settings/effective'),
+  saveSetting: (key: string, value: { type: string; value: unknown; version: number }) => request<SettingSummary & { type: string; source: string }>(`/api/v1/settings/${encodeURIComponent(key)}`, json('PUT', value)),
 }

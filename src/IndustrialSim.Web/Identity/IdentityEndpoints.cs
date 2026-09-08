@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using IndustrialSim.Application.Catalogs;
 using IndustrialSim.Application.Security;
+using IndustrialSim.Hosting;
 using IndustrialSim.Persistence;
 using IndustrialSim.Persistence.Identity;
 using Microsoft.AspNetCore.Identity;
@@ -14,7 +15,7 @@ public sealed record LoginRequest(string UserName, string Password);
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 public sealed record CreateUserRequest(string UserName, string Password, string Role);
 public sealed record UpdateUserRoleRequest(string Role);
-public sealed record UpdateSettingRequest(JsonElement Value);
+public sealed record UpdateSettingRequest(JsonElement Value, string? Type = null, long? Version = null);
 
 public static class IdentityEndpoints
 {
@@ -37,6 +38,12 @@ public static class IdentityEndpoints
 
         var settings = endpoints.MapGroup("/api/v1/settings").WithTags("Settings").RequireAuthorization(IndustrialPolicies.Admin);
         settings.MapGet("/", async (ISettingCatalogRepository repository, CancellationToken token) => Results.Ok(await repository.ListAsync(token)));
+        settings.MapGet("/effective", (IndustrialAuthOptions options, ISimulationRegistry registry) => Results.Ok(new[]
+        {
+            new { key = "Auth.Mode", value = (object)options.Mode, type = "String", source = "Effective runtime configuration" },
+            new { key = "Runtime.DeviceCount", value = (object)registry.List().Count, type = "Number", source = "Effective runtime configuration" },
+            new { key = "Runtime.LiveTransport", value = (object)"SignalR with polling fallback", type = "String", source = "Effective runtime configuration" }
+        }));
         settings.MapPut("/{key}", UpsertSettingAsync);
         return endpoints;
     }
@@ -172,12 +179,35 @@ public static class IdentityEndpoints
         IndustrialSimDbContext db,
         CancellationToken cancellationToken)
     {
-        if (key.Contains("password", StringComparison.OrdinalIgnoreCase) || key.Contains("token", StringComparison.OrdinalIgnoreCase) || key.Contains("secret", StringComparison.OrdinalIgnoreCase))
+        if (IsSensitiveSettingKey(key))
             return IndustrialSimProblemDetails.Result(400, "Secret setting rejected", "Secrets must use a secret provider, not the settings catalog.", "secretSettingRejected");
+        var type = CanonicalSettingType(request.Type, request.Value);
+        if (type is null)
+            return IndustrialSimProblemDetails.Result(400, "Setting validation failed", $"Value does not match setting type '{request.Type}'.", "invalidSettingType");
         var current = await repository.FindAsync(key, cancellationToken);
-        await repository.UpsertAsync(new SettingCatalogItem(key, request.Value.GetRawText(), current?.Version ?? 0), cancellationToken);
+        await repository.UpsertAsync(new SettingCatalogItem(key, request.Value.GetRawText(), request.Version ?? current?.Version ?? 0), cancellationToken);
         await db.CommitAsync(cancellationToken);
-        return Results.Ok(new { key, value = request.Value });
+        var saved = await repository.FindAsync(key, cancellationToken) ?? throw new InvalidOperationException($"Setting '{key}' was not persisted.");
+        return Results.Ok(new { key, valueJson = saved.ValueJson, type, version = saved.Version, source = "Persisted control-plane setting" });
+    }
+
+    private static bool IsSensitiveSettingKey(string key) =>
+        new[] { "password", "token", "secret", "credential", "apikey", "privatekey" }
+            .Any(fragment => key.Replace("_", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal).Contains(fragment, StringComparison.OrdinalIgnoreCase));
+
+    private static string? CanonicalSettingType(string? requested, JsonElement value)
+    {
+        var inferred = value.ValueKind switch
+        {
+            JsonValueKind.String => "String",
+            JsonValueKind.Number => "Number",
+            JsonValueKind.True or JsonValueKind.False => "Boolean",
+            JsonValueKind.Object or JsonValueKind.Array => "JSON",
+            _ => null
+        };
+        if (string.IsNullOrWhiteSpace(requested)) return inferred;
+        var canonical = new[] { "String", "Number", "Boolean", "JSON" }.SingleOrDefault(item => item.Equals(requested, StringComparison.OrdinalIgnoreCase));
+        return canonical is not null && canonical == inferred ? canonical : null;
     }
 
     private static IResult IdentityFailure(IdentityResult result, string errorCode) =>

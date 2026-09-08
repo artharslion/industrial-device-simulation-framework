@@ -151,4 +151,5 @@ export interface ScenarioCatalogItem {
 
 export interface UserSummary { id: string; userName: string; roles: string[] }
 export interface SettingSummary { key: string; valueJson: string; version: number }
+export interface EffectiveSetting { key: string; value: ScalarValue; type: string; source: string }
 export interface SessionSummary { mode: string; authenticated: boolean; userName?: string | null; roles: string[] }

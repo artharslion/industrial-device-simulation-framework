@@ -105,6 +105,28 @@ public sealed class AuthenticationTests
         Assert.DoesNotContain(fixture.Logs, message => message.Contains("wrong-password", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task Settings_support_types_versions_and_sensitive_key_rejection()
+    {
+        await using var fixture = await AuthFixture.StartAsync("LocalIdentity");
+        await fixture.Client.PostAsJsonAsync("/api/v1/auth/bootstrap", new { userName = "admin", password = "Admin!Pass123" });
+        fixture.Authorize(await fixture.LoginAsync("admin", "Admin!Pass123"));
+
+        var created = await fixture.Client.PutAsJsonAsync("/api/v1/settings/ui.refreshSeconds", new { type = "Number", value = 3, version = 0 });
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+        using (var value = JsonDocument.Parse(await created.Content.ReadAsStringAsync()))
+        {
+            Assert.Equal("Number", value.RootElement.GetProperty("type").GetString());
+            Assert.Equal(1, value.RootElement.GetProperty("version").GetInt64());
+        }
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PutAsJsonAsync("/api/v1/settings/ui.refreshSeconds", new { type = "Number", value = 5, version = 1 })).StatusCode);
+        var stale = await fixture.Client.PutAsJsonAsync("/api/v1/settings/ui.refreshSeconds", new { type = "Number", value = 8, version = 1 });
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        Assert.Contains("persistenceConflict", await stale.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.BadRequest, (await fixture.Client.PutAsJsonAsync("/api/v1/settings/privateKey", new { type = "String", value = "hidden" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.GetAsync("/api/v1/settings/effective")).StatusCode);
+    }
+
     private sealed class AuthFixture(WebApplication app, HttpClient client, string databasePath, SimulationRegistry registry, CapturingLoggerProvider logs) : IAsyncDisposable
     {
         public HttpClient Client { get; } = client;
