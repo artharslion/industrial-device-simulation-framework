@@ -3,9 +3,11 @@ import { computed, onMounted } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { routes } from '../router'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useThemeStore, type ThemePreference } from '../stores/theme'
 
 const route = useRoute()
 const workspace = useWorkspaceStore()
+const theme = useThemeStore()
 const navigation = computed(() => routes.filter(item => item.meta?.navigation && (!item.meta.admin || workspace.isAdmin)))
 const groups = computed(() => [...new Set(navigation.value.map(item => String(item.meta?.section)))])
 const currentLabel = computed(() => String(route.meta.label ?? 'Workspace'))
@@ -42,7 +44,10 @@ onMounted(() => { void workspace.loadSession() })
     <section class="command-center">
       <header class="workspace-header">
         <div class="breadcrumb"><strong>Workspace</strong><span class="slash">/</span><span>{{ currentLabel }}</span></div>
-        <div class="header-meta"><i class="sync-dot" aria-hidden="true"></i><span>Control plane online</span></div>
+        <div class="header-meta">
+          <label class="theme-control"><span>Theme</span><select :value="theme.preference" aria-label="Theme" @change="theme.setPreference(($event.target as HTMLSelectElement).value as ThemePreference)"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+          <i class="sync-dot" aria-hidden="true"></i><span>Control plane online</span>
+        </div>
       </header>
       <Transition name="notice"><div v-if="workspace.notice" class="global-notice" role="status">{{ workspace.notice }}</div></Transition>
       <RouterView />
