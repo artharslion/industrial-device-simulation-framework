@@ -62,6 +62,24 @@ export interface DeviceSummary {
   simulationTime: string
 }
 
+export interface DeviceDataPointRequest {
+  name: string
+  dataType: string
+  access: string
+  initial: ScalarValue
+  unit?: string | null
+  description?: string | null
+}
+
+export interface DeviceCreateRequest {
+  id: string
+  type: string
+  deterministic: boolean
+  seed: number
+  dataPoints: DeviceDataPointRequest[]
+  portBindings: Array<{ protocol: string; port: number }>
+}
+
 export interface ProtocolSummary {
   deviceId: string
   configured: Array<{ name: string; running: boolean }>

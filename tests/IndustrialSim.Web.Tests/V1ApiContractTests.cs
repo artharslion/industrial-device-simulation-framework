@@ -71,6 +71,14 @@ public sealed class V1ApiContractTests
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
         using var missingProblem = JsonDocument.Parse(await missing.Content.ReadAsStringAsync());
         Assert.Equal("simulationNotFound", missingProblem.RootElement.GetProperty("errorCode").GetString());
+
+        var reservedPort = FreePort();
+        var firstPort = await fixture.Client.PostAsJsonAsync("/api/v1/devices", DeviceRequest("port-owner", reservedPort));
+        Assert.Equal(HttpStatusCode.Created, firstPort.StatusCode);
+        var conflict = await fixture.Client.PostAsJsonAsync("/api/v1/devices", DeviceRequest("port-conflict", reservedPort));
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        using var conflictProblem = JsonDocument.Parse(await conflict.Content.ReadAsStringAsync());
+        Assert.Equal("portConflict", conflictProblem.RootElement.GetProperty("errorCode").GetString());
     }
 
     [Fact]
@@ -90,6 +98,16 @@ public sealed class V1ApiContractTests
         deterministic = true,
         seed = 1,
         dataPoints = new[] { new { name = "speed", dataType = "Int32", access = "ReadWrite", initial = 0 } }
+    };
+
+    private static object DeviceRequest(string id, int port) => new
+    {
+        id,
+        type = "custom",
+        deterministic = true,
+        seed = 1,
+        dataPoints = new[] { new { name = "speed", dataType = "Int32", access = "ReadWrite", initial = 0 } },
+        portBindings = new[] { new { protocol = "modbus", port } }
     };
 
     private static int FreePort()
