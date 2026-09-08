@@ -55,4 +55,18 @@ public sealed class DocumentationContractTests
         Assert.Contains("ScenarioParserTests`, `VisualModelingApiTests`, and Vue editor tests | Verified", matrix, StringComparison.Ordinal);
         Assert.Contains("Vitest, typecheck, production build, and desktop/mobile browser evidence | Verified", matrix, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Docker_deployment_uses_a_persistent_non_root_writable_sqlite_directory()
+    {
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var dockerfile = File.ReadAllText(Path.Combine(root, "Dockerfile"));
+        var compose = File.ReadAllText(Path.Combine(root, "docker-compose.yml"));
+
+        Assert.Contains("/app/data", dockerfile, StringComparison.Ordinal);
+        Assert.Contains("chown", dockerfile, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ConnectionStrings__IndustrialSim", compose, StringComparison.Ordinal);
+        Assert.Contains("Data Source=/app/data/industrial-sim.db", compose, StringComparison.Ordinal);
+        Assert.Contains("industrial-sim-data:/app/data", compose, StringComparison.Ordinal);
+    }
 }

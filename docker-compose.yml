@@ -3,10 +3,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        HTTP_PROXY: ${DOCKER_BUILD_PROXY:-}
+        HTTPS_PROXY: ${DOCKER_BUILD_PROXY:-}
+        NO_PROXY: localhost,127.0.0.1,host.docker.internal
     image: industrial-sim:local
     environment:
       ASPNETCORE_URLS: http://0.0.0.0:8080
       INDUSTRIALSIM_DEVICE_CONFIG: /app/config/device.yaml
+      ConnectionStrings__IndustrialSim: Data Source=/app/data/industrial-sim.db
     ports:
       - "4840:4840"
       - "5020:5020"
@@ -14,3 +19,7 @@ services:
     volumes:
       - ./examples/devices/pump.yaml:/app/config/device.yaml:ro
       - ./examples/scenarios:/app/config/scenarios:ro
+      - industrial-sim-data:/app/data
+
+volumes:
+  industrial-sim-data:

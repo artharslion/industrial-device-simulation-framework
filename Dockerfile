@@ -17,6 +17,7 @@ WORKDIR /app
 COPY --from=build /out .
 COPY examples/devices/pump.yaml /app/config/device.yaml
 COPY examples/scenarios /app/config/scenarios
+RUN mkdir -p /app/data && chown -R $APP_UID:$APP_UID /app/data
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
 ENV INDUSTRIALSIM_DEVICE_CONFIG=/app/config/device.yaml
 EXPOSE 4840 5020 8080
