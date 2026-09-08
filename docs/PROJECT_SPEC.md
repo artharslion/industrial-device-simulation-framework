@@ -147,6 +147,33 @@ The following remain deferred after Wave 2: template marketplace distribution,
 automated test suites/reports, forwarding, Webhooks, recording/replay, MQTT,
 S7, BACnet, and other additional protocols.
 
+## 2.5 Developer console usability and device-management closure
+
+The next authorized console increment completes the existing Vue control-plane
+workflows without changing runtime ownership or adding platform scope. It adds
+readable Light, Dark, and System themes; direct and template-backed device
+creation; addressable device details; stopped-only atomic definition
+replacement; a platform-oriented overview; local identity administration; and
+typed non-secret control-plane settings.
+
+Device definition replacement is a control-plane transaction. A running device
+must be stopped first. The replacement definition and protocol bindings are
+validated before the current `SimulationHost` is removed, and persistence is
+committed only after a replacement host is ready. Any validation, construction,
+port reservation, or persistence failure leaves the original host and original
+catalog definition available. Live datapoints, simulation clocks, scenarios,
+and faults remain owned by the runtime `StateStore`; SQLite stores definitions
+and other control-plane data only.
+
+The Vue application may keep theme, session, selection, and form state in
+Pinia or composables. SignalR remains the primary live update channel and
+polling remains the disconnect fallback. Authentication-disabled mode presents
+the effective `local-developer` Admin identity without creating a database
+user. Persisted settings reject secret-like keys and distinguish stored values
+from effective host configuration. Secret storage, additional protocols,
+template distribution, test reporting, forwarding, and recording/replay remain
+out of scope.
+
 ---
 
 # 3. Non-Goals
