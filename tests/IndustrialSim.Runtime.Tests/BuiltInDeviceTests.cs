@@ -1,5 +1,7 @@
 using IndustrialSim.Core.Domain;
+using IndustrialSim.Devices;
 using IndustrialSim.Devices.Motor;
+using IndustrialSim.Devices.Pump;
 using IndustrialSim.Devices.Sensor;
 using IndustrialSim.Runtime.State;
 
@@ -40,4 +42,48 @@ public sealed class BuiltInDeviceTests
         Assert.Equal(0d, state.Get(new("value"))!.Value);
         Assert.Equal("Good", state.Get(new("quality"))!.Value);
     }
+
+    [Fact]
+    public void Built_in_profiles_create_complete_public_contracts_and_reject_incompatible_definitions()
+    {
+        var pump = BuiltInDeviceProfiles.Get("pump").CreateDefinition(new DeviceId("pump-configured"));
+
+        Assert.Equal(["start", "stop"], pump.Commands.Select(command => command.Name));
+        Assert.Equal("pump", pump.Behavior!.Profile);
+        BuiltInDeviceProfiles.Validate(pump, pump.Behavior);
+
+        var incompatible = new DeviceDefinition(
+            new DeviceId("broken"),
+            "pump",
+            [new DataPointDefinition("speed", DataType.Int32, DataPointAccess.ReadWrite, 0)],
+            [new CommandDefinition("start"), new CommandDefinition("stop")],
+            behavior: new DeviceBehaviorDefinition("pump"));
+
+        var error = Assert.Throws<ArgumentException>(() => BuiltInDeviceProfiles.Validate(incompatible, incompatible.Behavior!));
+        Assert.Contains("temperature", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Typed_behavior_parameters_change_pump_motor_and_sensor_updates()
+    {
+        var pumpState = new StateStore(PumpDefinition());
+        var pump = new Pump(pumpState, new PumpParameters(ratedSpeed: 1000, acceleration: TimeSpan.FromSeconds(2), heatingRatePerSecond: 2));
+        pump.Start();
+        pump.Update(TimeSpan.FromSeconds(1));
+        Assert.Equal(500, pumpState.Get(new("speed"))!.Value);
+        Assert.Equal(27d, pumpState.Get(new("temperature"))!.Value);
+
+        var motorState = new StateStore(Motor.CreateDefinition(new DeviceId("motor-parameters")));
+        var motor = new Motor(motorState, new MotorParameters(900, TimeSpan.FromSeconds(1), 6, 1, 0.2, 90));
+        motor.Start();
+        motor.Update(TimeSpan.FromSeconds(1));
+        Assert.Equal(900, motorState.Get(new("speed"))!.Value);
+        Assert.Equal(6d, motorState.Get(new("current"))!.Value);
+
+        var sensorState = new StateStore(Sensor.CreateDefinition(new DeviceId("sensor-parameters")));
+        new Sensor(sensorState, new SensorParameters(2.5)).Update(TimeSpan.FromSeconds(2));
+        Assert.Equal(5d, sensorState.Get(new("value"))!.Value);
+    }
+
+    private static DeviceDefinition PumpDefinition() => BuiltInDeviceProfiles.Get("pump").CreateDefinition(new DeviceId("pump-parameters"));
 }

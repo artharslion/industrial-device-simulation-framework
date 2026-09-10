@@ -72,8 +72,8 @@ public sealed class ScenarioRunner
             case SetAction set:
                 EnsureSucceeded(_state.SetInternal(new DataPointId(set.DataPoint), set.Value, _engine.CurrentTime), set.DataPoint);
                 break;
-            case CommandAction command: _command?.Invoke(command.Device, command.Name); break;
-            case FaultAction fault: _faultAction?.Invoke(fault); _fault?.Invoke(fault.Device, fault.Type); break;
+            case CommandAction command: _command?.Invoke(ResolveDevice(command.Device), command.Name); break;
+            case FaultAction fault: _faultAction?.Invoke(fault); _fault?.Invoke(ResolveDevice(fault.Device), fault.Type); break;
             case RampAction ramp: ExecuteRamp(ramp); break;
             case WaitAction _: break;
         }
@@ -94,6 +94,9 @@ public sealed class ScenarioRunner
 
     private void ValidateScenario()
     {
+        if (_scenario.Target is { } target && !target.Type.Equals(_state.Definition.Type, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException($"Scenario target type '{target.Type}' does not match runtime device type '{_state.Definition.Type}'.");
+
         foreach (var step in _scenario.Steps)
         {
             switch (step.Trigger)
@@ -140,10 +143,18 @@ public sealed class ScenarioRunner
         }
     }
 
-    private void ValidateDevice(string device)
+    private string ResolveDevice(string device)
     {
+        if (string.IsNullOrWhiteSpace(device))
+        {
+            if (_scenario.Target is null) throw new ArgumentException("Scenario action requires a device or scenario target.");
+            return _state.Definition.Id.Value;
+        }
         if (!device.Equals(_state.Definition.Id.Value, StringComparison.OrdinalIgnoreCase)) throw new ArgumentException($"Scenario device '{device}' does not match runtime device '{_state.Definition.Id.Value}'.");
+        return device;
     }
+
+    private void ValidateDevice(string device) => _ = ResolveDevice(device);
 
     private DataPointDefinition ValidateDataPoint(string dataPoint) =>
         _state.Definition.DataPoints.FirstOrDefault(item => item.Name.Equals(dataPoint, StringComparison.OrdinalIgnoreCase))

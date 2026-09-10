@@ -16,8 +16,7 @@ public static partial class TemplateCatalog
             throw new TemplateValidationException($"Template version '{template.Version}' must be a three-part semantic version.");
         if (string.IsNullOrWhiteSpace(template.DisplayName) || string.IsNullOrWhiteSpace(template.DeviceType))
             throw new TemplateValidationException("Display name and device type are required.");
-        try { using var _ = JsonDocument.Parse(template.BehaviorJson); }
-        catch (JsonException exception) { throw new TemplateValidationException($"Behavior JSON is invalid: {exception.Message}"); }
+        _ = Behavior(template.BehaviorJson);
         if (template.DataPoints.Count == 0)
             throw new TemplateValidationException("A template requires at least one datapoint.");
 
@@ -69,7 +68,8 @@ public static partial class TemplateCatalog
                 point.Unit,
                 point.Description)),
             template.Commands.Select(name => new CommandDefinition(name)),
-            template.Events.Select(name => new EventDefinition(name)));
+            template.Events.Select(name => new EventDefinition(name)),
+            Behavior(template.BehaviorJson));
     }
 
     public static string Export(DeviceTemplateDocument template, IReadOnlyList<ProtocolMappingProfile> mappings)
@@ -118,6 +118,36 @@ public static partial class TemplateCatalog
         JsonValueKind.Null => null,
         _ => throw new TemplateValidationException("Datapoint initial values must be scalar JSON values.")
     } : value;
+
+    private static DeviceBehaviorDefinition? Behavior(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+                throw new TemplateValidationException("Behavior JSON must be an object.");
+            if (!document.RootElement.TryGetProperty("profile", out var profileNode)) return null;
+            var profile = profileNode.GetString();
+            if (string.IsNullOrWhiteSpace(profile)) throw new TemplateValidationException("Behavior profile cannot be blank.");
+            var parameters = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            if (document.RootElement.TryGetProperty("parameters", out var parametersNode))
+            {
+                if (parametersNode.ValueKind != JsonValueKind.Object)
+                    throw new TemplateValidationException("Behavior parameters must be a JSON object.");
+                foreach (var property in parametersNode.EnumerateObject())
+                {
+                    if (!property.Value.TryGetDouble(out var value))
+                        throw new TemplateValidationException($"Behavior parameter '{property.Name}' must be numeric.");
+                    parameters[property.Name] = value;
+                }
+            }
+            return new DeviceBehaviorDefinition(profile, parameters);
+        }
+        catch (JsonException exception)
+        {
+            throw new TemplateValidationException($"Behavior JSON is invalid: {exception.Message}");
+        }
+    }
 
     [GeneratedRegex("^[a-z0-9][a-z0-9.-]*$")]
     private static partial Regex IdPattern();

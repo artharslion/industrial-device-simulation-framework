@@ -2,6 +2,7 @@ using System.Text.Json;
 using IndustrialSim.Application.Catalogs;
 using IndustrialSim.Application.Security;
 using IndustrialSim.Core.Domain;
+using IndustrialSim.Devices;
 using IndustrialSim.Faults;
 using IndustrialSim.Hosting;
 using IndustrialSim.Persistence;
@@ -24,6 +25,31 @@ public static class V1Endpoints
         api.MapVisualModelingEndpoints();
 
         api.MapGet("/devices", (ISimulationRegistry registry) => Results.Ok(registry.List()));
+        api.MapGet("/device-profiles", () => Results.Ok(BuiltInDeviceProfiles.All.Select(profile => new
+        {
+            profile.Name,
+            profile.DisplayName,
+            profile.Description,
+            dataPoints = profile.DataPoints.Select(point => new
+            {
+                name = point.Name,
+                dataType = point.DataType.ToString(),
+                access = point.Access.ToString(),
+                initial = point.InitialValue?.Value,
+                point.Unit,
+                point.Description
+            }),
+            commands = profile.Commands.Select(command => command.Name),
+            events = profile.Events.Select(@event => @event.Name),
+            parameters = profile.Parameters.Select(parameter => new
+            {
+                parameter.Name,
+                parameter.DefaultValue,
+                parameter.Minimum,
+                parameter.Unit,
+                parameter.Description
+            })
+        })));
         api.MapGet("/devices/{deviceId}", DeviceDetailsAsync);
         api.MapPost("/devices", CreateDeviceAsync).RequireAuthorization(IndustrialPolicies.Admin);
         api.MapPut("/devices/{deviceId}", UpdateDeviceAsync).RequireAuthorization(IndustrialPolicies.Admin);
@@ -82,11 +108,12 @@ public static class V1Endpoints
     {
         if (string.IsNullOrWhiteSpace(request.Id) || string.IsNullOrWhiteSpace(request.Type) || request.DataPoints.Count == 0)
             return IndustrialSimProblemDetails.Result(400, "Validation failed", "Device id, type, and at least one data point are required.", "invalidDevice");
-        var definition = new DeviceDefinition(
-            new DeviceId(request.Id),
-            request.Type,
-            request.DataPoints.Select(ToDefinition),
-            [], []);
+        var definition = ToDefinition(request);
+        if (definition.Behavior is not null)
+        {
+            try { BuiltInDeviceProfiles.Validate(definition, definition.Behavior); }
+            catch (ArgumentException exception) { return IndustrialSimProblemDetails.Result(400, "Invalid behavior profile", exception.Message, "invalidBehaviorProfile"); }
+        }
         var launch = new DeviceLaunchDefinition(
             definition,
             new SimulationHostOptions(request.Deterministic, request.Seed),
@@ -135,6 +162,11 @@ public static class V1Endpoints
                     unit = point.Unit,
                     description = point.Description
                 }),
+                commands = handle.Host.Runtime.Definition.Commands.Select(command => command.Name),
+                events = handle.Host.Runtime.Definition.Events.Select(@event => @event.Name),
+                behavior = handle.Host.Behavior is { } behavior
+                    ? new { profile = behavior.Profile, parameters = behavior.Parameters }
+                    : null,
                 portBindings = handle.PortBindings.Select(binding => new { protocol = binding.Protocol, port = binding.Port })
             },
             protocols = handle.Host.Protocols.Select(protocol => new { name = protocol.Key, running = protocol.Value.IsRunning }),
@@ -159,7 +191,12 @@ public static class V1Endpoints
         if (request.DataPoints.Count == 0)
             return IndustrialSimProblemDetails.Result(400, "Validation failed", "At least one data point is required.", "invalidDevice");
 
-        var definition = new DeviceDefinition(new DeviceId(request.Id), request.Type, request.DataPoints.Select(ToDefinition), [], []);
+        var definition = ToDefinition(request);
+        if (definition.Behavior is not null)
+        {
+            try { BuiltInDeviceProfiles.Validate(definition, definition.Behavior); }
+            catch (ArgumentException exception) { return IndustrialSimProblemDetails.Result(400, "Invalid behavior profile", exception.Message, "invalidBehaviorProfile"); }
+        }
         var launch = new DeviceLaunchDefinition(definition, new SimulationHostOptions(request.Deterministic, request.Seed), request.PortBindings?.Select(binding => new ProtocolPortBinding(binding.Protocol, binding.Port)).ToArray());
         var item = new DeviceCatalogItem(request.Id, JsonSerializer.Serialize(request), "Stopped", request.Version);
         var handle = await registry.ReplaceAsync(deviceId, launch, async token =>
@@ -314,6 +351,14 @@ public static class V1Endpoints
         if (!Enum.TryParse<DataPointAccess>(request.Access, true, out var access)) throw new ArgumentException($"Unknown access mode '{request.Access}'.");
         return new DataPointDefinition(request.Name, dataType, access, request.Initial is { } initial ? JsonValue(initial) : null, request.Unit, request.Description);
     }
+
+    private static DeviceDefinition ToDefinition(CreateDeviceRequest request) => new(
+        new DeviceId(request.Id),
+        request.Type,
+        request.DataPoints.Select(ToDefinition),
+        request.Commands?.Select(name => new CommandDefinition(name)),
+        request.Events?.Select(name => new EventDefinition(name)),
+        request.Behavior is null ? null : new DeviceBehaviorDefinition(request.Behavior.Profile, request.Behavior.Parameters));
 
     private static object Summary(SimulationHandle handle) => new
     {

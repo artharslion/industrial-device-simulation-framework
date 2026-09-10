@@ -29,6 +29,15 @@ device:
   commands:
     start:
     stop:
+  behavior:
+    profile: motor
+    parameters:
+      ratedSpeed: 1800
+      accelerationSeconds: 10
+      ratedCurrent: 12
+      heatingRatePerSecond: 0.4
+      coolingRatePerSecond: 0.2
+      overheatTemperature: 90
 protocols:
   opcua:
     enabled: true

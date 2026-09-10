@@ -16,7 +16,7 @@ describe('platform overview', () => {
     vi.spyOn(platformApi, 'device').mockImplementation(async id => ({
       summary: { deviceId: id, deviceType: 'custom', isRunning: id === 'running', deterministic: true, seed: 1, simulationTime: '00:00:01' },
       runtime: { state: id === 'running' ? 'Running' : 'Stopped', time: '00:00:01', deviceId: id, deviceType: 'custom', deterministic: true, seed: 1, scenario: { name: null, running: false }, activeFaults: id === 'running' ? 1 : 0 },
-      state: {}, definition: { id, type: 'custom', deterministic: true, seed: 1, version: 1, dataPoints: [], portBindings: [] }, protocols: [], scenarios: { running: false, available: [] }, faults: id === 'running' ? [{ id: 'f1', category: 'Data', type: 'Freeze' }] : [], events: [],
+      state: {}, definition: { id, type: 'custom', deterministic: true, seed: 1, version: 1, dataPoints: [], commands: [], events: [], portBindings: [] }, protocols: [], scenarios: { running: false, available: [] }, faults: id === 'running' ? [{ id: 'f1', category: 'Data', type: 'Freeze' }] : [], events: [],
     }))
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: OverviewView }, { path: '/:pathMatch(.*)*', component: { template: '<div />' } }] })
     await router.push('/'); await router.isReady()

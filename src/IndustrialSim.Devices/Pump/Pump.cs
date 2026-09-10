@@ -35,19 +35,7 @@ public sealed class Pump
         _parameters = parameters ?? new PumpParameters();
     }
 
-    public DeviceDefinition Definition => new(
-        new DeviceId("pump-001"),
-        "pump",
-        new[]
-        {
-            new DataPointDefinition("speed", DataType.Int32, DataPointAccess.ReadWrite, 0, "rpm"),
-            new DataPointDefinition("temperature", DataType.Double, DataPointAccess.Read, 25d, "°C"),
-            new DataPointDefinition("pressure", DataType.Double, DataPointAccess.Read, 0d, "bar"),
-            new DataPointDefinition("running", DataType.Boolean, DataPointAccess.Read, false),
-            new DataPointDefinition("alarm", DataType.Boolean, DataPointAccess.Read, false)
-        },
-        new[] { new CommandDefinition("start"), new CommandDefinition("stop") },
-        new[] { new EventDefinition("PumpStarted"), new EventDefinition("PumpStopped"), new EventDefinition("Overheated") });
+    public DeviceDefinition Definition => BuiltInDeviceProfiles.Get("pump").CreateDefinition(new DeviceId("pump-001"));
 
     public StateTransitionResult Start(SimulationTime? timestamp = null)
     {

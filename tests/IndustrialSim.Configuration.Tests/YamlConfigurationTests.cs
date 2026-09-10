@@ -74,6 +74,8 @@ protocols:
 
         Assert.Equal("pump-001", loaded.Device.Id.Value);
         Assert.Equal(4, loaded.ModbusMappings.Count);
+        Assert.Equal("pump", loaded.Device.Behavior!.Profile);
+        Assert.Equal(1450, loaded.Device.Behavior.Parameters["ratedSpeed"]);
     }
 
     [Theory]

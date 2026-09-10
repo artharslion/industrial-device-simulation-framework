@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { useDeviceEditor } from './useDeviceEditor'
+import type { BuiltInDeviceProfile } from '../types'
 
 describe('device editor', () => {
   it('edits dynamic datapoints and converts typed initial values', () => {
@@ -36,5 +37,26 @@ describe('device editor', () => {
     editor.addDataPoint()
     editor.form.dataPoints[1]!.name = 'speed'
     expect(() => editor.toRequest()).toThrow(/unique|number/i)
+  })
+
+  it('applies a built-in profile as a complete behavior contract', () => {
+    const editor = useDeviceEditor()
+    const profile: BuiltInDeviceProfile = {
+      name: 'pump', displayName: 'Pump', description: 'Pump behavior',
+      dataPoints: [{ name: 'speed', dataType: 'Int32', access: 'ReadWrite', initial: 0 }],
+      commands: ['start', 'stop'], events: ['PumpStarted'],
+      parameters: [{ name: 'ratedSpeed', defaultValue: 1450, minimum: 0, unit: 'rpm', description: 'Target speed' }],
+    }
+
+    editor.applyProfile(profile)
+    editor.form.id = 'pump-2'
+    editor.form.behaviorParameters[0]!.value = 1200
+
+    expect(editor.toRequest()).toMatchObject({
+      type: 'pump',
+      commands: ['start', 'stop'],
+      events: ['PumpStarted'],
+      behavior: { profile: 'pump', parameters: { ratedSpeed: 1200 } },
+    })
   })
 })

@@ -3,6 +3,54 @@ namespace IndustrialSim.IntegrationTests;
 public sealed class DocumentationContractTests
 {
     [Fact]
+    public void Documentation_separates_service_startup_from_the_ordered_operator_workflow()
+    {
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var readme = File.ReadAllText(Path.Combine(root, "README.md"));
+        var startupGuide = File.ReadAllText(Path.Combine(root, "docs", "STARTUP_GUIDE.md"));
+        var chineseStartupGuide = File.ReadAllText(Path.Combine(root, "docs", "STARTUP_GUIDE.zh-CN.md"));
+        var manual = File.ReadAllText(Path.Combine(root, "docs", "USER_MANUAL.md"));
+        var chineseManual = File.ReadAllText(Path.Combine(root, "docs", "USER_MANUAL.zh-CN.md"));
+
+        Assert.Contains("docs/STARTUP_GUIDE.md", readme, StringComparison.Ordinal);
+        Assert.Contains("docs/STARTUP_GUIDE.zh-CN.md", readme, StringComparison.Ordinal);
+        Assert.Contains("docs/USER_MANUAL.md", readme, StringComparison.Ordinal);
+        Assert.Contains("docs/USER_MANUAL.zh-CN.md", readme, StringComparison.Ordinal);
+
+        string[] startupSections =
+        [
+            "Start with Docker Compose", "Start from source", "Configuration overrides", "Authentication",
+            "SQLite persistence", "Startup troubleshooting"
+        ];
+        foreach (var section in startupSections)
+            Assert.Contains(section, startupGuide, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Contains("使用 Docker Compose 启动", chineseStartupGuide, StringComparison.Ordinal);
+        Assert.Contains("从源码启动", chineseStartupGuide, StringComparison.Ordinal);
+        Assert.Contains("启动问题排查", chineseStartupGuide, StringComparison.Ordinal);
+
+        string[] workflowSteps =
+        [
+            "Step 1: Open the console", "Step 2: Decide whether to use an existing device or create one",
+            "Step 3: Start the device", "Step 4: Run the first scenario", "Step 6: Inject a fault",
+            "Step 7: Verify the device", "Step 8: Use events", "Step 9: Save and reuse"
+        ];
+        foreach (var step in workflowSteps)
+            Assert.Contains(step, manual, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Contains("openapi/v1.json", manual, StringComparison.Ordinal);
+        Assert.DoesNotContain("## 2. Prerequisites", manual, StringComparison.Ordinal);
+        Assert.DoesNotContain("## 3. Start with Docker Compose", manual, StringComparison.Ordinal);
+
+        Assert.Contains("第一步：进入控制台", chineseManual, StringComparison.Ordinal);
+        Assert.Contains("第二步：决定使用现有设备还是创建设备", chineseManual, StringComparison.Ordinal);
+        Assert.Contains("第四步：运行第一个场景", chineseManual, StringComparison.Ordinal);
+        Assert.Contains("第六步：注入故障并验证恢复", chineseManual, StringComparison.Ordinal);
+        Assert.Contains("第八步：使用事件解释系统行为", chineseManual, StringComparison.Ordinal);
+        Assert.DoesNotContain("## 3. 使用 Docker Compose 启动", chineseManual, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Protoforge_baseline_matrix_covers_capabilities_and_protocols()
     {
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));

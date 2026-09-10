@@ -111,4 +111,54 @@ public class ScenarioSchedulerTests
         engine.Tick(TimeSpan.FromSeconds(1));
         Assert.Equal(2, state.Get(new DataPointId("speed"))!.Value);
     }
+
+    [Fact]
+    public async Task Reusable_target_binds_to_the_selected_compatible_runtime()
+    {
+        static async Task<(object? Speed, IReadOnlyList<string> Commands)> Run(string deviceId)
+        {
+            var definition = new DeviceDefinition(
+                new DeviceId(deviceId),
+                "pump",
+                [new DataPointDefinition("speed", DataType.Int32, DataPointAccess.ReadWrite, 0)],
+                [new CommandDefinition("start")]);
+            var engine = new SimulationEngine(new DeterministicClock());
+            var state = new StateStore(definition);
+            var commands = new List<string>();
+            var scenario = new ScenarioDefinition(
+                "reusable",
+                [
+                    new ScenarioStep(new AtTrigger(TimeSpan.Zero), new CommandAction(string.Empty, "start")),
+                    new ScenarioStep(new AtTrigger(TimeSpan.Zero), new SetAction(string.Empty, "speed", 900))
+                ],
+                new ScenarioTarget("pump"));
+            var runner = new ScenarioRunner(scenario, engine, state, (target, command) => commands.Add($"{target}:{command}"));
+            await engine.StartAsync();
+            runner.Start();
+            engine.Tick(TimeSpan.Zero);
+            return (state.Get(new DataPointId("speed"))!.Value, commands);
+        }
+
+        var first = await Run("pump-a");
+        var second = await Run("pump-b");
+
+        Assert.Equal(900, first.Speed);
+        Assert.Equal(900, second.Speed);
+        Assert.Equal(["pump-a:start"], first.Commands);
+        Assert.Equal(["pump-b:start"], second.Commands);
+    }
+
+    [Fact]
+    public async Task Reusable_target_rejects_an_incompatible_runtime_type()
+    {
+        var definition = new DeviceDefinition(new DeviceId("sensor-1"), "sensor", [new DataPointDefinition("speed", DataType.Int32, DataPointAccess.ReadWrite, 0)]);
+        var runner = new ScenarioRunner(
+            new ScenarioDefinition("pump-only", [new ScenarioStep(new AtTrigger(TimeSpan.Zero), new SetAction(string.Empty, "speed", 1))], new ScenarioTarget("pump")),
+            new SimulationEngine(new DeterministicClock()),
+            new StateStore(definition));
+
+        var error = Assert.Throws<ArgumentException>(() => runner.Start());
+
+        Assert.Contains("target type", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }

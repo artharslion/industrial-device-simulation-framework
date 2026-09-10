@@ -40,6 +40,18 @@ public sealed class TemplateCatalogTests
     }
 
     [Fact]
+    public void Instantiates_explicit_behavior_metadata_from_template_json()
+    {
+        var definition = TemplateCatalog.Instantiate(Template("1.0.0") with
+        {
+            BehaviorJson = """{"profile":"pump","parameters":{"ratedSpeed":1200}}"""
+        }, "configured-pump");
+
+        Assert.Equal("pump", definition.Behavior!.Profile);
+        Assert.Equal(1200, definition.Behavior.Parameters["ratedSpeed"]);
+    }
+
+    [Fact]
     public void Imports_exports_and_searches_immutable_versions()
     {
         var templates = new[] { Template("1.0.0"), Template("2.0.0") with { Tags = ["water", "critical"] } };

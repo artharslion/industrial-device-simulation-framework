@@ -12,7 +12,7 @@ describe('device details', () => {
       summary: { deviceId: 'pump-1', deviceType: 'pump', isRunning: true, deterministic: true, seed: 4, simulationTime: '00:00:01' },
       runtime: { state: 'Running', time: '00:00:01', deviceId: 'pump-1', deviceType: 'pump', deterministic: true, seed: 4, scenario: { name: null, running: false }, activeFaults: 0 },
       state: { speed: 10 },
-      definition: { id: 'pump-1', type: 'pump', deterministic: true, seed: 4, version: 1, dataPoints: [{ name: 'speed', dataType: 'Int32', access: 'ReadWrite', initial: 0 }], portBindings: [{ protocol: 'modbus', port: 5020 }] },
+      definition: { id: 'pump-1', type: 'pump', deterministic: true, seed: 4, version: 1, dataPoints: [{ name: 'speed', dataType: 'Int32', access: 'ReadWrite', initial: 0 }], commands: ['start', 'stop'], events: [], portBindings: [{ protocol: 'modbus', port: 5020 }] },
       protocols: [], scenarios: { running: false, available: [] }, faults: [], events: [],
     })
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/devices', component: { template: '<div />' } }, { path: '/devices/:deviceId', component: DeviceDetailsView }] })

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using IndustrialSim.Configuration;
 using IndustrialSim.Configuration.Models;
 using IndustrialSim.Core.Domain;
+using IndustrialSim.Devices;
 using IndustrialSim.Devices.Motor;
 using IndustrialSim.Devices.Pump;
 using IndustrialSim.Devices.Sensor;
@@ -54,6 +55,7 @@ public sealed class SimulationHost : IAsyncDisposable
     private readonly ConcurrentQueue<object> _events = new();
     private readonly Dictionary<string, DataFaultProcessor> _dataFaultProcessors = new(StringComparer.OrdinalIgnoreCase);
     private readonly DeviceFaultController _deviceFaultController;
+    private readonly DeviceBehaviorDefinition? _behavior;
     private readonly SimulationHostOptions _options;
     private CancellationTokenSource? _loopCts;
     private Task? _loopTask;
@@ -70,22 +72,27 @@ public sealed class SimulationHost : IAsyncDisposable
         Engine = new SimulationEngine(options.Deterministic ? new DeterministicClock() : new RealTimeClock());
         var state = new StateStore(configuration.Device);
         var commandHandlers = new Dictionary<string, Func<CancellationToken, Task>>(StringComparer.OrdinalIgnoreCase);
-        if (CanAttachPump(configuration.Device))
+        _behavior = ResolveBehavior(configuration.Device);
+        if (configuration.Device.Behavior is not null) BuiltInDeviceProfiles.Validate(configuration.Device, configuration.Device.Behavior);
+        if (_behavior is not null && !_behavior.Profile.Equals("none", StringComparison.OrdinalIgnoreCase))
         {
-            _pump = new Pump(state);
-            commandHandlers["start"] = _ => { _pump.Start(Engine.CurrentTime); return Task.CompletedTask; };
-            commandHandlers["stop"] = _ => { _pump.Stop(Engine.CurrentTime); return Task.CompletedTask; };
-        }
-        else if (CanAttachMotor(configuration.Device))
-        {
-            _motor = new Motor(state);
-            commandHandlers["start"] = _ => { _motor.Start(Engine.CurrentTime); return Task.CompletedTask; };
-            commandHandlers["stop"] = _ => { _motor.Stop(Engine.CurrentTime); return Task.CompletedTask; };
-        }
-        else if (CanAttachSensor(configuration.Device))
-        {
-            _sensor = new Sensor(state);
-            commandHandlers["reset"] = _ => { _sensor.Reset(Engine.CurrentTime); return Task.CompletedTask; };
+            switch (_behavior.Profile.ToLowerInvariant())
+            {
+                case "pump":
+                    _pump = CreatePump(state, _behavior);
+                    commandHandlers["start"] = _ => { _pump.Start(Engine.CurrentTime); return Task.CompletedTask; };
+                    commandHandlers["stop"] = _ => { _pump.Stop(Engine.CurrentTime); return Task.CompletedTask; };
+                    break;
+                case "motor":
+                    _motor = CreateMotor(state, _behavior);
+                    commandHandlers["start"] = _ => { _motor.Start(Engine.CurrentTime); return Task.CompletedTask; };
+                    commandHandlers["stop"] = _ => { _motor.Stop(Engine.CurrentTime); return Task.CompletedTask; };
+                    break;
+                case "sensor":
+                    _sensor = CreateSensor(state, _behavior);
+                    commandHandlers["reset"] = _ => { _sensor.Reset(Engine.CurrentTime); return Task.CompletedTask; };
+                    break;
+            }
         }
         Runtime = new InMemoryDeviceRuntime(configuration.Device, state, commandHandlers, () => Engine.CurrentTime);
         FaultManager = new FaultManager(Engine);
@@ -114,6 +121,7 @@ public sealed class SimulationHost : IAsyncDisposable
     public bool IsRunning { get; private set; }
     public bool IsDeterministic => _options.Deterministic;
     public int Seed => _options.Seed;
+    public DeviceBehaviorDefinition? Behavior => _behavior;
     public int WebPort => _options.Overrides?.WebPort ?? _configuration.Configuration.Web?.Port ?? 8080;
 
     public static Task<SimulationHost> LoadAsync(string path, CancellationToken cancellationToken = default) => LoadAsync(path, new SimulationHostOptions(), cancellationToken);
@@ -210,9 +218,9 @@ public sealed class SimulationHost : IAsyncDisposable
         Engine.Reset();
         foreach (var point in Runtime.Definition.DataPoints)
             if (point.InitialValue is not null) State.SetInternal(new DataPointId(point.Name), point.InitialValue.Value, Engine.CurrentTime);
-        if (_pump is not null) _pump = new Pump(State);
-        if (_motor is not null) _motor = new Motor(State);
-        if (_sensor is not null) _sensor = new Sensor(State);
+        if (_pump is not null) _pump = CreatePump(State, _behavior!);
+        if (_motor is not null) _motor = CreateMotor(State, _behavior!);
+        if (_sensor is not null) _sensor = CreateSensor(State, _behavior!);
     }
 
     public void ScheduleFault(FaultSpec fault)
@@ -445,4 +453,33 @@ public sealed class SimulationHost : IAsyncDisposable
         return points.TryGetValue("value", out var value) && value.DataType == DataType.Double
             && points.TryGetValue("quality", out var quality) && quality.DataType == DataType.String;
     }
+
+    private static DeviceBehaviorDefinition? ResolveBehavior(DeviceDefinition definition)
+    {
+        if (definition.Behavior is not null) return definition.Behavior;
+        if (CanAttachPump(definition)) return new DeviceBehaviorDefinition("pump");
+        if (CanAttachMotor(definition)) return new DeviceBehaviorDefinition("motor");
+        if (CanAttachSensor(definition)) return new DeviceBehaviorDefinition("sensor");
+        return null;
+    }
+
+    private static Pump CreatePump(StateStore state, DeviceBehaviorDefinition behavior) => new(state, new PumpParameters(
+        (int)Math.Round(BuiltInDeviceProfiles.Parameter(behavior, "ratedSpeed")),
+        TimeSpan.FromSeconds(BuiltInDeviceProfiles.Parameter(behavior, "accelerationSeconds")),
+        BuiltInDeviceProfiles.Parameter(behavior, "maxPressure"),
+        BuiltInDeviceProfiles.Parameter(behavior, "heatingRatePerSecond"),
+        BuiltInDeviceProfiles.Parameter(behavior, "coolingRatePerSecond"),
+        BuiltInDeviceProfiles.Parameter(behavior, "overheatTemperature")));
+
+    private static Motor CreateMotor(StateStore state, DeviceBehaviorDefinition behavior) => new(state, new MotorParameters(
+        (int)Math.Round(BuiltInDeviceProfiles.Parameter(behavior, "ratedSpeed")),
+        TimeSpan.FromSeconds(BuiltInDeviceProfiles.Parameter(behavior, "accelerationSeconds")),
+        BuiltInDeviceProfiles.Parameter(behavior, "ratedCurrent"),
+        BuiltInDeviceProfiles.Parameter(behavior, "heatingRatePerSecond"),
+        BuiltInDeviceProfiles.Parameter(behavior, "coolingRatePerSecond"),
+        BuiltInDeviceProfiles.Parameter(behavior, "overheatTemperature")));
+
+    private static Sensor CreateSensor(StateStore state, DeviceBehaviorDefinition behavior) => new(
+        state,
+        new SensorParameters(BuiltInDeviceProfiles.Parameter(behavior, "ratePerSecond")));
 }

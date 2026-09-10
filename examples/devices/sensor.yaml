@@ -13,6 +13,10 @@ device:
       access: read
   commands:
     reset:
+  behavior:
+    profile: sensor
+    parameters:
+      ratePerSecond: 1
 protocols:
   opcua:
     enabled: true

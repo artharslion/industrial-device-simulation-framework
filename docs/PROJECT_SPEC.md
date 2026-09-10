@@ -825,22 +825,33 @@ when
 ```yaml
 scenario:
   name: pump-startup
+  target:
+    type: pump
 
   steps:
 
     - at: 0s
       command:
-        device: pump-001
         name: start
 
     - after: 1s
       ramp:
-        device: pump-001
         datapoint: speed
         from: 0
         to: 1450
         duration: 10s
 ```
+
+Post-v0.1 reusable single-device scenarios SHOULD declare
+`scenario.target.type` and omit concrete device IDs from triggers and actions.
+The actual device is selected when the scenario starts. Before scheduling any
+action, the runtime must reject a selected device whose type, datapoints,
+datapoint value types, or commands do not satisfy the scenario.
+
+Existing YAML with action-level `device` fields remains supported as a legacy
+device-bound contract. When an explicit device is present, it must still match
+the selected runtime exactly. A scenario without `scenario.target` must provide
+the legacy device field for every device-oriented trigger and action.
 
 ---
 
@@ -859,11 +870,9 @@ Example:
 
 ```yaml
 - when:
-    device: pump-001
     condition: "temperature > 90"
 
   set:
-    device: pump-001
     datapoint: alarm
     value: true
 ```
@@ -1699,6 +1708,30 @@ Commands:
 ```text
 reset
 ```
+
+Built-in behavior selection is explicit in newly created definitions:
+
+```yaml
+device:
+  type: pump
+  behavior:
+    profile: pump
+    parameters:
+      ratedSpeed: 1450
+      accelerationSeconds: 10
+      heatingRatePerSecond: 0.5
+```
+
+Supported v0.1 profiles are `pump`, `motor`, `sensor`, and `none`. An explicit
+built-in profile must match the device type, required datapoint names/types/
+access modes, and required commands. Invalid definitions fail before the host
+is registered. `none` attaches no periodic behavior and is the default for
+new Custom devices.
+
+For backward compatibility, definitions that omit `device.behavior` may still
+use legacy type-and-schema inference. Authoring tools SHOULD emit explicit
+behavior metadata and MUST show the behavior summary and parameter defaults
+before creating the device.
 
 ---
 

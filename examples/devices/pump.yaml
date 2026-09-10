@@ -29,6 +29,15 @@ device:
   commands:
     start:
     stop:
+  behavior:
+    profile: pump
+    parameters:
+      ratedSpeed: 1450
+      accelerationSeconds: 10
+      maxPressure: 3.2
+      heatingRatePerSecond: 0.5
+      coolingRatePerSecond: 0.2
+      overheatTemperature: 90
 protocols:
   opcua:
     enabled: true

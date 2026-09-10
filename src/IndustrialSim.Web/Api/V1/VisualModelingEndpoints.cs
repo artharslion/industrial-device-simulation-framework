@@ -80,6 +80,10 @@ public static class VisualModelingEndpoints
         {
             return IndustrialSimProblemDetails.Result(400, "Invalid template", exception.Message, "templateInvalid");
         }
+        catch (ArgumentException exception)
+        {
+            return IndustrialSimProblemDetails.Result(400, "Invalid behavior profile", exception.Message, "invalidBehaviorProfile");
+        }
         catch (InvalidOperationException exception)
         {
             return IndustrialSimProblemDetails.Result(409, "Template version exists", exception.Message, "templateVersionExists");
@@ -134,6 +138,10 @@ public static class VisualModelingEndpoints
         catch (TemplateValidationException exception)
         {
             return IndustrialSimProblemDetails.Result(400, "Invalid template", exception.Message, "templateInvalid");
+        }
+        catch (ArgumentException exception)
+        {
+            return IndustrialSimProblemDetails.Result(400, "Invalid behavior profile", exception.Message, "invalidBehaviorProfile");
         }
 
         var handle = await registry.CreateAsync(launch, cancellationToken);

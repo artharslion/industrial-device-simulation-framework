@@ -1,6 +1,6 @@
 import type { InjectionKey } from 'vue'
 import type {
-  DeviceCreateRequest, DeviceDetails, DeviceSummary, DeviceTemplateDocument, EffectiveSetting, FaultRequest, ProtocolStatus, ProtocolSummary,
+  BuiltInDeviceProfile, DeviceCreateRequest, DeviceDetails, DeviceSummary, DeviceTemplateDocument, EffectiveSetting, FaultRequest, ProtocolStatus, ProtocolSummary,
   ScenarioCatalogItem, SessionSummary, SettingSummary, TemplatePackage, UserSummary, RuntimeSnapshot, RuntimeStatus, ScalarValue,
 } from './types'
 
@@ -121,6 +121,7 @@ const json = (method: string, body?: unknown): RequestInit => ({
 export const platformApi = {
   session: () => request<SessionSummary>('/api/v1/auth/session'),
   devices: () => request<DeviceSummary[]>('/api/v1/devices'),
+  deviceProfiles: () => request<BuiltInDeviceProfile[]>('/api/v1/device-profiles'),
   createDevice: (value: DeviceCreateRequest) => request<DeviceSummary>('/api/v1/devices', json('POST', value)),
   device: (id: string) => request<DeviceDetails>(`/api/v1/devices/${encodeURIComponent(id)}`),
   updateDevice: (id: string, value: DeviceCreateRequest) => request(`/api/v1/devices/${encodeURIComponent(id)}`, json('PUT', value)),

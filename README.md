@@ -1,108 +1,120 @@
 # Industrial Device Simulation Framework
 
-Developer-first .NET runtime for defining, simulating, exposing, testing, and intentionally failing virtual industrial devices.
+> Define once. Simulate anywhere.
 
-The v0.1 MVP provides one runtime-owned `StateStore`, YAML device configuration, deterministic and real-time execution, Scenario and Fault engines, interoperable OPC UA and Modbus TCP servers, a CLI, and a developer Web console.
+Industrial Device Simulation Framework is a developer-first .NET runtime for defining, running, exposing, testing, and intentionally failing virtual industrial devices.
 
-## Quick start
+One logical device is owned by one runtime `StateStore` and can be observed through OPC UA, Modbus TCP, the CLI, the HTTP API, and the developer Web console. Scenarios and faults change that same state, which makes the framework useful for protocol learning, gateway development, integration tests, and deterministic CI environments.
+
+## What you can do
+
+- Define Pump, Motor, Sensor, or custom devices in YAML.
+- Run simulations in real time or with a deterministic clock and seed.
+- Expose the same logical state through OPC UA and Modbus TCP.
+- Create and run `set`, `ramp`, `command`, `wait`, and `fault` scenario steps.
+- Inject Data, Device, and Network Faults and observe their lifecycle.
+- Operate devices from a multi-page Web console.
+- Create reusable device templates and persistent scenario definitions.
+- Optionally enable local users with Viewer, Operator, and Admin roles.
+
+## Five-minute start with Docker
+
+Requirements: Docker Desktop and free host ports `4840`, `5020`, and `8080`.
+
+```powershell
+docker compose up --build
+```
+
+Wait for the Web host to report that it is listening, then open [http://localhost:8080](http://localhost:8080).
+
+The Compose stack starts the example Pump with:
+
+| Interface | Endpoint |
+| --- | --- |
+| Web console and API | `http://localhost:8080` |
+| OPC UA | `opc.tcp://localhost:4840` |
+| Modbus TCP | `localhost:5020` |
+
+In the console:
+
+1. Open **Devices**, select `pump-001`, and inspect its live state.
+2. Use **Start**, **Pause**, **Stop**, **Reset**, or deterministic **Tick** controls.
+3. Open **Scenarios**, import `examples/scenarios/startup.yaml`, and run it on `pump-001`.
+4. Return to the device details to see state, protocols, faults, and ordered events.
+
+Stop the stack with `Ctrl+C`, then:
+
+```powershell
+docker compose down
+```
+
+The named Docker volume retains the SQLite control-plane database. Use `docker compose down -v` only when you intentionally want to delete that persisted data.
+
+## Run from source
 
 Requirements:
 
 - .NET SDK 10.0
-- Docker Desktop only for the container workflow
+- Node.js and npm when building the Web project from source
 
-Validate the canonical Pump configuration:
+Validate the example configuration:
 
 ```powershell
 dotnet run --project src/IndustrialSim.Cli -- validate examples/devices/pump.yaml
 ```
 
-Run it until `Ctrl+C`:
+Run the Pump until `Ctrl+C`:
 
 ```powershell
 dotnet run --project src/IndustrialSim.Cli -- run examples/devices/pump.yaml
 ```
 
-Run deterministic time with an explicit seed and advance 12 seconds immediately:
+Run a reproducible 12-second simulation immediately:
 
 ```powershell
 dotnet run --project src/IndustrialSim.Cli -- run examples/devices/pump.yaml --deterministic --seed 123 --duration 12
 ```
 
-Execute a Scenario against the same YAML-composed runtime:
-
-```powershell
-dotnet run --project src/IndustrialSim.Cli -- scenario run examples/scenarios/startup.yaml --config examples/devices/pump.yaml --deterministic --duration 12
-```
-
-Exercise the documented Device and Network Fault scenarios deterministically:
-
-```powershell
-dotnet run --project src/IndustrialSim.Cli -- scenario run examples/scenarios/overheating.yaml --config examples/devices/pump.yaml --deterministic --duration 31
-dotnet run --project src/IndustrialSim.Cli -- scenario run examples/scenarios/network-timeout.yaml --config examples/devices/pump.yaml --deterministic --duration 71
-```
-
-Data Fault YAML targets a datapoint explicitly, while Network Fault YAML
-targets a protocol boundary:
-
-```yaml
-fault:
-  type: stale
-  target: { device: pump-001, datapoint: temperature }
-  duration: 10s
-```
-
-```yaml
-fault:
-  type: network.timeout
-  protocol: opcua
-  duration: 10s
-```
-
-## Developer Web console
-
-Set the device configuration and run the Web host:
+Run the Web console:
 
 ```powershell
 $env:INDUSTRIALSIM_DEVICE_CONFIG = "$PWD/examples/devices/pump.yaml"
 dotnet run --project src/IndustrialSim.Web --urls http://localhost:8080
 ```
 
-Open [http://localhost:8080](http://localhost:8080). The console provides:
+## Run a scenario
 
-- live `StateStore` inspection
-- start, resume, pause, stop, reset, and deterministic tick controls
-- Scenario YAML run/stop controls
-- Data, Device, and Network Fault activation/recovery
-- runtime, adapter, Scenario, and Fault lifecycle status
-- ordered state and fault events
+```powershell
+dotnet run --project src/IndustrialSim.Cli -- scenario run examples/scenarios/startup.yaml --config examples/devices/pump.yaml --deterministic --duration 12
+```
 
-The JSON API is available under `/api/state`, `/api/runtime`, `/api/protocols`, `/api/scenario`, `/api/fault`, `/api/faults`, and `/api/events`.
+Fault examples:
 
-Host configuration precedence is command-line override, environment variable,
-YAML, then built-in default. Supported overrides are:
+```powershell
+dotnet run --project src/IndustrialSim.Cli -- scenario run examples/scenarios/overheating.yaml --config examples/devices/pump.yaml --deterministic --duration 31
+dotnet run --project src/IndustrialSim.Cli -- scenario run examples/scenarios/network-timeout.yaml --config examples/devices/pump.yaml --deterministic --duration 71
+```
 
-- `--opcua-endpoint` / `INDUSTRIALSIM_OPCUA_ENDPOINT`
-- `--modbus-port` / `INDUSTRIALSIM_MODBUS_PORT`
-- Web `--web-port` / `INDUSTRIALSIM_WEB_PORT`
-- `--log-level` / `INDUSTRIALSIM_LOG_LEVEL`
+The scenario targets logical devices, datapoints, commands, and protocols—not Modbus addresses or OPC UA node identifiers:
 
-The Web host and CLI emit structured console logs through the standard .NET
-logging abstractions.
+```yaml
+scenario:
+  name: pump-startup
+  steps:
+    - at: 0s
+      command:
+        device: pump-001
+        name: start
+    - after: 1s
+      ramp:
+        device: pump-001
+        datapoint: speed
+        from: 0
+        to: 1450
+        duration: 10s
+```
 
-## Protocol endpoints
-
-The canonical Pump configuration exposes:
-
-- OPC UA: `opc.tcp://localhost:4840`
-- Modbus TCP: `localhost:5020`
-- Web console/API: `http://localhost:8080`
-
-Protocol adapters do not own state. OPC UA variables/methods and Modbus coils/registers read and write the same runtime `StateStore` used by Scenario, Fault, CLI, and Web operations.
-
-Modbus mappings explicitly select `coil`, `discreteInput`, `inputRegister`, `holdingRegister`, or legacy `register`. Numeric mappings support `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32`, `int64`, `uint64`, `float`/`float32`, and `double`, with optional `byteOrder` and `wordOrder` values of `big` or `little`.
-
-## YAML shape
+## Configuration at a glance
 
 ```yaml
 device:
@@ -132,37 +144,42 @@ web:
   port: 8080
 ```
 
-See [examples/devices/pump.yaml](examples/devices/pump.yaml) and [examples/scenarios](examples/scenarios).
+Start with [examples/devices/pump.yaml](examples/devices/pump.yaml), [examples/devices/motor.yaml](examples/devices/motor.yaml), or [examples/devices/sensor.yaml](examples/devices/sensor.yaml).
 
-## Docker
+## Documentation
 
-```powershell
-docker compose up --build
-```
+- [Service Startup Guide](docs/STARTUP_GUIDE.md) / [中文启动指南](docs/STARTUP_GUIDE.zh-CN.md) — Docker, source startup, ports, environment variables, authentication mode, persistence, and startup troubleshooting.
+- [User Manual](docs/USER_MANUAL.md) / [中文用户手册](docs/USER_MANUAL.zh-CN.md) — the recommended workflow from selecting a device through scenarios, faults, protocol verification, events, and reusable models.
+- [Technical Specification](docs/PROJECT_SPEC.md) — normative behavior, architecture, and scope.
+- [Implementation Notes](docs/IMPLEMENTATION_NOTES.md) — implementation-level context and limitations.
+- [AI Development Guide](docs/AI_DEVELOPMENT_GUIDE.md) — repository workflow for AI-assisted changes.
 
-The Compose service mounts `examples/devices/pump.yaml` and the
-`examples/scenarios` directory read-only, and publishes ports `4840`, `5020`,
-and `8080`.
+## Configuration overrides
 
-To build without Compose:
+Precedence is command-line option, environment variable, YAML, then built-in default.
 
-```powershell
-docker build -t industrial-sim:local .
-docker run --rm -p 4840:4840 -p 5020:5020 -p 8080:8080 industrial-sim:local
-```
+| Purpose | CLI | Environment |
+| --- | --- | --- |
+| OPC UA endpoint | `--opcua-endpoint` | `INDUSTRIALSIM_OPCUA_ENDPOINT` |
+| Modbus port | `--modbus-port` | `INDUSTRIALSIM_MODBUS_PORT` |
+| Web port | `--web-port` | `INDUSTRIALSIM_WEB_PORT` |
+| Log level | `--log-level` | `INDUSTRIALSIM_LOG_LEVEL` |
 
-## Verification
+The Web host also uses `INDUSTRIALSIM_DEVICE_CONFIG`, `ConnectionStrings__IndustrialSim`, and `Auth__Mode`.
+
+## Verify the repository
 
 ```powershell
 dotnet restore IndustrialSim.sln
 dotnet build IndustrialSim.sln --configuration Release
 dotnet test IndustrialSim.sln --configuration Release --no-build
-docker build -t industrial-sim:local .
 docker compose config
 ```
 
-The integration suite starts real OPC UA, Modbus TCP, and HTTP clients against one runtime and covers cross-protocol state, Scenario execution, and Data/Device/Network Fault activation and recovery.
+The test suite covers the shared runtime state, deterministic scenarios, fault activation and recovery, real OPC UA and Modbus clients, HTTP contracts, persistence, authentication, and the Web console.
 
-## v0.1 boundaries
+## Scope
 
-The MVP intentionally excludes authentication, multi-user management, PLC programming, 3D visualization, AAS implementation, enterprise asset management, and protocols beyond OPC UA and Modbus TCP.
+The accepted v0.1 runtime includes YAML devices, Pump/Motor/Sensor models, deterministic simulation, scenarios, faults, OPC UA, Modbus TCP, CLI, Docker, and the developer Web UI. Post-v0.1 platform work adds the versioned control API, persistent catalogs, visual modeling workflows, and optional local identity while preserving the original runtime boundaries.
+
+The project is not a PLC runtime, 3D factory simulator, AAS implementation, enterprise asset-management system, or general-purpose factory management platform.

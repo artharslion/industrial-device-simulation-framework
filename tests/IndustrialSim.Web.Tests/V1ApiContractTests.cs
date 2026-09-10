@@ -43,10 +43,12 @@ public sealed class V1ApiContractTests
         var scenario = await fixture.Client.PutAsJsonAsync("/api/v1/scenarios/startup", new
         {
             name = "Startup",
-            yaml = "scenario:\n  name: startup\n  steps:\n    - at: 0s\n      set:\n        device: api-pump\n        datapoint: speed\n        value: 900"
+            yaml = "scenario:\n  name: startup\n  target:\n    type: custom\n  steps:\n    - at: 0s\n      set:\n        datapoint: speed\n        value: 900"
         });
         Assert.Equal(HttpStatusCode.OK, scenario.StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PostAsync("/api/v1/devices/api-pump/scenarios/startup/start", null)).StatusCode);
+        state = await fixture.Client.GetFromJsonAsync<Dictionary<string, JsonElement>>("/api/v1/devices/api-pump/state");
+        Assert.Equal(900, state!["speed"].GetInt32());
         Assert.Contains("startup", await fixture.Client.GetStringAsync("/api/v1/scenarios"), StringComparison.OrdinalIgnoreCase);
 
         var openApi = await fixture.Client.GetStringAsync("/openapi/v1.json");
@@ -98,6 +100,8 @@ public sealed class V1ApiContractTests
         Assert.Equal(HttpStatusCode.Created, (await fixture.Client.PostAsJsonAsync("/api/v1/devices", DeviceRequest("editable"))).StatusCode);
         using var details = JsonDocument.Parse(await fixture.Client.GetStringAsync("/api/v1/devices/editable"));
         Assert.Equal(1, details.RootElement.GetProperty("definition").GetProperty("version").GetInt64());
+        Assert.Equal(JsonValueKind.Array, details.RootElement.GetProperty("definition").GetProperty("commands").ValueKind);
+        Assert.Equal(JsonValueKind.Array, details.RootElement.GetProperty("definition").GetProperty("events").ValueKind);
 
         await fixture.Client.PostAsync("/api/v1/devices/editable/start", null);
         var runningEdit = await fixture.Client.PutAsJsonAsync("/api/v1/devices/editable", new
@@ -120,6 +124,59 @@ public sealed class V1ApiContractTests
         Assert.Equal("sensor", updated.RootElement.GetProperty("definition").GetProperty("type").GetString());
         Assert.Equal(2, updated.RootElement.GetProperty("definition").GetProperty("version").GetInt64());
         Assert.Equal(21.5, updated.RootElement.GetProperty("state").GetProperty("temperature").GetDouble());
+    }
+
+    [Fact]
+    public async Task Built_in_profiles_are_discoverable_validated_and_drive_runtime_behavior()
+    {
+        await using var fixture = await V1Fixture.StartAsync();
+        var profiles = await fixture.Client.GetStringAsync("/api/v1/device-profiles");
+        Assert.Contains("ratedSpeed", profiles, StringComparison.Ordinal);
+        Assert.Contains("sensor", profiles, StringComparison.OrdinalIgnoreCase);
+
+        var create = await fixture.Client.PostAsJsonAsync("/api/v1/devices", new
+        {
+            id = "configured-pump",
+            type = "pump",
+            deterministic = true,
+            seed = 4,
+            dataPoints = new object[]
+            {
+                new { name = "speed", dataType = "Int32", access = "ReadWrite", initial = 0 },
+                new { name = "temperature", dataType = "Double", access = "Read", initial = 25d },
+                new { name = "pressure", dataType = "Double", access = "Read", initial = 0d },
+                new { name = "running", dataType = "Boolean", access = "Read", initial = false },
+                new { name = "alarm", dataType = "Boolean", access = "Read", initial = false }
+            },
+            commands = new[] { "start", "stop" },
+            events = new[] { "PumpStarted", "PumpStopped", "Overheated" },
+            behavior = new { profile = "pump", parameters = new { ratedSpeed = 1000, accelerationSeconds = 2, maxPressure = 4, heatingRatePerSecond = 2, coolingRatePerSecond = 0.2, overheatTemperature = 90 } }
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        await fixture.Client.PostAsync("/api/v1/devices/configured-pump/start", null);
+        await fixture.Client.PutAsJsonAsync("/api/v1/scenarios/start-pump", new
+        {
+            name = "Start pump",
+            yaml = "scenario:\n  name: start-pump\n  target:\n    type: pump\n  steps:\n    - at: 0s\n      command:\n        name: start"
+        });
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PostAsync("/api/v1/devices/configured-pump/scenarios/start-pump/start", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PostAsync("/api/v1/devices/configured-pump/tick/1", null)).StatusCode);
+        var state = await fixture.Client.GetFromJsonAsync<Dictionary<string, JsonElement>>("/api/v1/devices/configured-pump/state");
+        Assert.Equal(500, state!["speed"].GetInt32());
+        Assert.Equal(27d, state["temperature"].GetDouble());
+
+        var invalid = await fixture.Client.PostAsJsonAsync("/api/v1/devices", new
+        {
+            id = "invalid-pump",
+            type = "pump",
+            dataPoints = new[] { new { name = "speed", dataType = "Int32", access = "ReadWrite", initial = 0 } },
+            commands = new[] { "start", "stop" },
+            behavior = new { profile = "pump", parameters = new { } }
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using var problem = JsonDocument.Parse(await invalid.Content.ReadAsStringAsync());
+        Assert.Equal("invalidBehaviorProfile", problem.RootElement.GetProperty("errorCode").GetString());
     }
 
     private static object DeviceRequest(string id) => new

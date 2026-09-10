@@ -86,6 +86,21 @@ public sealed class EventDefinition : IEventDefinition
             : value.Trim();
 }
 
+public sealed class DeviceBehaviorDefinition
+{
+    public DeviceBehaviorDefinition(string profile, IReadOnlyDictionary<string, double>? parameters = null)
+    {
+        Profile = string.IsNullOrWhiteSpace(profile)
+            ? throw new ArgumentException("Behavior profile cannot be blank.", nameof(profile))
+            : profile.Trim();
+        Parameters = new System.Collections.ObjectModel.ReadOnlyDictionary<string, double>(
+            new Dictionary<string, double>(parameters ?? new Dictionary<string, double>(), StringComparer.OrdinalIgnoreCase));
+    }
+
+    public string Profile { get; }
+    public IReadOnlyDictionary<string, double> Parameters { get; }
+}
+
 public sealed class DeviceDefinition : IDevice
 {
     public DeviceDefinition(
@@ -93,7 +108,8 @@ public sealed class DeviceDefinition : IDevice
         string type,
         IEnumerable<DataPointDefinition>? dataPoints = null,
         IEnumerable<CommandDefinition>? commands = null,
-        IEnumerable<EventDefinition>? events = null)
+        IEnumerable<EventDefinition>? events = null,
+        DeviceBehaviorDefinition? behavior = null)
     {
         Id = id;
         Type = string.IsNullOrWhiteSpace(type)
@@ -103,6 +119,7 @@ public sealed class DeviceDefinition : IDevice
         DataPoints = CopyAndValidate(dataPoints ?? [], nameof(dataPoints));
         Commands = CopyAndValidate(commands ?? [], nameof(commands));
         Events = CopyAndValidate(events ?? [], nameof(events));
+        Behavior = behavior;
     }
 
     public DeviceId Id { get; }
@@ -110,6 +127,7 @@ public sealed class DeviceDefinition : IDevice
     public IReadOnlyList<DataPointDefinition> DataPoints { get; }
     public IReadOnlyList<CommandDefinition> Commands { get; }
     public IReadOnlyList<EventDefinition> Events { get; }
+    public DeviceBehaviorDefinition? Behavior { get; }
 
     string IDevice.Id => Id.Value;
     IReadOnlyCollection<IDataPoint> IDevice.DataPoints => DataPoints;

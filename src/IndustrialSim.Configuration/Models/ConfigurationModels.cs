@@ -14,6 +14,13 @@ public sealed class DeviceConfiguration
     public string? Name { get; set; }
     public Dictionary<string, DataPointConfiguration>? Datapoints { get; set; }
     public Dictionary<string, object?>? Commands { get; set; }
+    public DeviceBehaviorConfiguration? Behavior { get; set; }
+}
+
+public sealed class DeviceBehaviorConfiguration
+{
+    public string? Profile { get; set; }
+    public Dictionary<string, double>? Parameters { get; set; }
 }
 
 public sealed class DataPointConfiguration

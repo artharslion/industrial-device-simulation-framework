@@ -23,7 +23,12 @@ public sealed class YamlConfigurationLoader
         var points = (device.Datapoints ?? throw new ArgumentException("Missing required 'device.datapoints'."))
             .Select(pair => ToDataPoint(pair.Key, pair.Value)).ToArray();
         var commands = (device.Commands ?? new Dictionary<string, object?>()).Keys.Select(name => new CommandDefinition(name)).ToArray();
-        var definition = new DeviceDefinition(new DeviceId(device.Id), device.Type, points, commands);
+        var behavior = device.Behavior is null
+            ? null
+            : new DeviceBehaviorDefinition(
+                string.IsNullOrWhiteSpace(device.Behavior.Profile) ? device.Type : device.Behavior.Profile,
+                device.Behavior.Parameters);
+        var definition = new DeviceDefinition(new DeviceId(device.Id), device.Type, points, commands, behavior: behavior);
         var mappings = configuration.Protocols?.Modbus is { } modbus ? ModbusMappingValidator.Validate(modbus) : [];
         ValidateHostConfiguration(configuration);
         ValidateMappings(definition, mappings);

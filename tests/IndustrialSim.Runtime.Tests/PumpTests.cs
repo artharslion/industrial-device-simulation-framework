@@ -37,4 +37,19 @@ public class PumpTests
         Assert.Equal(false, state.Get(new DataPointId("running"))!.Value);
         Assert.Equal(34d, state.Get(new DataPointId("temperature"))!.Value);
     }
+
+    [Fact]
+    public void Running_behavior_continues_heating_and_recalculates_speed_after_external_writes()
+    {
+        var template = new Pump(new StateStore(new DeviceDefinition(new DeviceId("pump-001"), "pump"))).Definition;
+        var state = new StateStore(template);
+        var pump = new Pump(state);
+
+        pump.Start();
+        state.SetInternal(new DataPointId("speed"), 0);
+        pump.Update(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(25.5d, state.Get(new DataPointId("temperature"))!.Value);
+        Assert.Equal(145, state.Get(new DataPointId("speed"))!.Value);
+    }
 }

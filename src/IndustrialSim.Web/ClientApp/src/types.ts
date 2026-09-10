@@ -77,15 +77,36 @@ export interface DeviceCreateRequest {
   deterministic: boolean
   seed: number
   dataPoints: DeviceDataPointRequest[]
+  commands?: string[]
+  events?: string[]
+  behavior?: { profile: string; parameters: Record<string, number> } | null
   portBindings: Array<{ protocol: string; port: number }>
   version?: number
+}
+
+export interface DeviceBehaviorParameter {
+  name: string
+  defaultValue: number
+  minimum: number
+  unit?: string | null
+  description: string
+}
+
+export interface BuiltInDeviceProfile {
+  name: string
+  displayName: string
+  description: string
+  dataPoints: DeviceDataPointRequest[]
+  commands: string[]
+  events: string[]
+  parameters: DeviceBehaviorParameter[]
 }
 
 export interface DeviceDetails {
   summary: DeviceSummary
   runtime: RuntimeStatus
   state: Record<string, ScalarValue>
-  definition: DeviceCreateRequest & { version: number }
+  definition: DeviceCreateRequest & { version: number; commands: string[]; events: string[] }
   protocols: Array<{ name: string; running: boolean }>
   scenarios: { active?: string | null; running: boolean; available: ScenarioCatalogItem[] }
   faults: ActiveFault[]

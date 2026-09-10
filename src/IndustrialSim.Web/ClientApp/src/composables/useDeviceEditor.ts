@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import type { DeviceCreateRequest, ScalarValue } from '../types'
+import type { BuiltInDeviceProfile, DeviceCreateRequest, ScalarValue } from '../types'
 
 export interface EditableDataPoint {
   name: string
@@ -10,12 +10,23 @@ export interface EditableDataPoint {
   description: string
 }
 
+export interface EditableBehaviorParameter {
+  name: string
+  value: number
+  minimum: number
+  unit: string
+  description: string
+}
+
 const newDataPoint = (): EditableDataPoint => ({ name: '', dataType: 'Double', access: 'ReadWrite', initialText: '0', unit: '', description: '' })
 
 export function useDeviceEditor() {
   const form = reactive({
-    id: '', type: 'custom', deterministic: true, seed: 1,
+    id: '', type: 'custom', profile: 'custom', behaviorDescription: 'No built-in behavior. State changes only through writes, scenarios, commands, or faults.', deterministic: true, seed: 1,
     dataPoints: [newDataPoint()],
+    commands: [] as string[],
+    events: [] as string[],
+    behaviorParameters: [] as EditableBehaviorParameter[],
     portBindings: [] as Array<{ protocol: string; port: number }>,
   })
 
@@ -24,14 +35,56 @@ export function useDeviceEditor() {
   function addBinding() { form.portBindings.push({ protocol: 'opcua', port: 4840 }) }
   function removeBinding(index: number) { form.portBindings.splice(index, 1) }
 
+  function applyProfile(profile: BuiltInDeviceProfile | null) {
+    if (!profile) {
+      form.profile = 'custom'
+      form.type = 'custom'
+      form.behaviorDescription = 'No built-in behavior. State changes only through writes, scenarios, commands, or faults.'
+      form.dataPoints.splice(0, form.dataPoints.length, newDataPoint())
+      form.commands.splice(0)
+      form.events.splice(0)
+      form.behaviorParameters.splice(0)
+      return
+    }
+    form.profile = profile.name
+    form.type = profile.name
+    form.behaviorDescription = profile.description
+    form.dataPoints.splice(0, form.dataPoints.length, ...profile.dataPoints.map(point => ({
+      name: point.name,
+      dataType: point.dataType,
+      access: point.access,
+      initialText: point.initial === null ? '' : String(point.initial),
+      unit: point.unit ?? '',
+      description: point.description ?? '',
+    })))
+    form.commands.splice(0, form.commands.length, ...profile.commands)
+    form.events.splice(0, form.events.length, ...profile.events)
+    form.behaviorParameters.splice(0, form.behaviorParameters.length, ...profile.parameters.map(parameter => ({
+      name: parameter.name,
+      value: parameter.defaultValue,
+      minimum: parameter.minimum,
+      unit: parameter.unit ?? '',
+      description: parameter.description,
+    })))
+  }
+
   function load(value: DeviceCreateRequest) {
     form.id = value.id
     form.type = value.type
+    form.profile = value.behavior?.profile && value.behavior.profile !== 'none' ? value.behavior.profile : 'custom'
+    form.behaviorDescription = form.profile === 'custom'
+      ? 'No built-in behavior. State changes only through writes, scenarios, commands, or faults.'
+      : `${form.profile} built-in behavior`
     form.deterministic = value.deterministic
     form.seed = value.seed
     form.dataPoints.splice(0, form.dataPoints.length, ...value.dataPoints.map(point => ({
       name: point.name, dataType: point.dataType, access: point.access,
       initialText: point.initial === null ? '' : String(point.initial), unit: point.unit ?? '', description: point.description ?? '',
+    })))
+    form.commands.splice(0, form.commands.length, ...(value.commands ?? []))
+    form.events.splice(0, form.events.length, ...(value.events ?? []))
+    form.behaviorParameters.splice(0, form.behaviorParameters.length, ...Object.entries(value.behavior?.parameters ?? {}).map(([name, parameter]) => ({
+      name, value: Number(parameter), minimum: 0, unit: '', description: '',
     })))
     form.portBindings.splice(0, form.portBindings.length, ...value.portBindings.map(binding => ({ ...binding })))
   }
@@ -54,6 +107,8 @@ export function useDeviceEditor() {
     const names = form.dataPoints.map(item => item.name.trim().toLowerCase())
     if (names.some(name => !name)) throw new Error('Every datapoint needs a name.')
     if (new Set(names).size !== names.length) throw new Error('Datapoint names must be unique.')
+    const invalidParameter = form.behaviorParameters.find(parameter => !Number.isFinite(Number(parameter.value)) || Number(parameter.value) < parameter.minimum)
+    if (invalidParameter) throw new Error(`${invalidParameter.name} must be at least ${invalidParameter.minimum}.`)
     if (form.portBindings.some(item => item.port < 1 || item.port > 65535)) throw new Error('Protocol ports must be between 1 and 65535.')
     if (new Set(form.portBindings.map(item => item.port)).size !== form.portBindings.length) throw new Error('Protocol ports must be unique.')
     return {
@@ -62,9 +117,14 @@ export function useDeviceEditor() {
         name: item.name.trim(), dataType: item.dataType, access: item.access, initial: scalar(item),
         unit: item.unit.trim() || null, description: item.description.trim() || null,
       })),
+      commands: [...form.commands],
+      events: [...form.events],
+      behavior: form.profile === 'custom'
+        ? { profile: 'none', parameters: {} }
+        : { profile: form.profile, parameters: Object.fromEntries(form.behaviorParameters.map(parameter => [parameter.name, Number(parameter.value)])) },
       portBindings: form.portBindings.map(item => ({ protocol: item.protocol, port: Number(item.port) })),
     }
   }
 
-  return { form, addDataPoint, removeDataPoint, addBinding, removeBinding, load, toRequest }
+  return { form, addDataPoint, removeDataPoint, addBinding, removeBinding, applyProfile, load, toRequest }
 }

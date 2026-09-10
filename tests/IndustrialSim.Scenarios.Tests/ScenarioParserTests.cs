@@ -76,4 +76,53 @@ public class ScenarioParserTests
         Assert.Equal("modbus", network.Protocol);
         Assert.Equal(TimeSpan.FromSeconds(3), network.Duration);
     }
+
+    [Fact]
+    public void Parses_reusable_single_target_scenario_without_device_ids()
+    {
+        const string yaml = """
+            scenario:
+              name: reusable-pump
+              target:
+                type: pump
+              steps:
+                - at: 0s
+                  command: { name: start }
+                - after: 1s
+                  set: { datapoint: speed, value: 100 }
+                - after: 1s
+                  ramp: { datapoint: speed, from: 100, to: 1400, duration: 500ms }
+                - when: { condition: "temperature > 80" }
+                  fault: { type: overheat }
+            """;
+
+        var scenario = new ScenarioParser().Parse(yaml);
+
+        Assert.Equal("pump", scenario.Target!.Type);
+        Assert.Equal(TimeSpan.FromMilliseconds(500), Assert.IsType<RampAction>(scenario.Steps[2].Action).Duration);
+        Assert.All(scenario.Steps, step =>
+        {
+            if (step.Trigger is WhenTrigger when) Assert.Empty(when.Device);
+            if (step.Action is SetAction set) Assert.Empty(set.Device);
+            if (step.Action is RampAction ramp) Assert.Empty(ramp.Device);
+            if (step.Action is CommandAction command) Assert.Empty(command.Device);
+            if (step.Action is FaultAction fault) Assert.Empty(fault.Device);
+        });
+    }
+
+    [Fact]
+    public void Targetless_device_action_requires_scenario_target_or_legacy_device_id()
+    {
+        const string yaml = """
+            scenario:
+              name: invalid
+              steps:
+                - at: 0s
+                  command: { name: start }
+            """;
+
+        var error = Assert.Throws<ArgumentException>(() => new ScenarioParser().Parse(yaml));
+
+        Assert.Contains("scenario.target", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }
