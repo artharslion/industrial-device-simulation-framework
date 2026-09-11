@@ -10,18 +10,20 @@ internal sealed class IndustrialOpcUaServer : StandardServer
 {
     private readonly IDeviceRuntime _runtime;
     private readonly OpcUaTransportFaultController _transportFault;
+    private readonly IReadOnlyDictionary<string, string> _dataPointNodeIds;
 
-    public IndustrialOpcUaServer(IDeviceRuntime runtime, OpcUaTransportFaultController transportFault)
+    public IndustrialOpcUaServer(IDeviceRuntime runtime, OpcUaTransportFaultController transportFault, IReadOnlyDictionary<string, string> dataPointNodeIds)
     {
         _runtime = runtime;
         _transportFault = transportFault;
+        _dataPointNodeIds = dataPointNodeIds;
     }
 
     protected override MasterNodeManager CreateMasterNodeManager(IServerInternal server, ApplicationConfiguration configuration)
     {
         return new MasterNodeManager(server, configuration, null, new INodeManager[]
         {
-            new IndustrialNodeManager(server, configuration, _runtime, _transportFault)
+            new IndustrialNodeManager(server, configuration, _runtime, _transportFault, _dataPointNodeIds)
         });
     }
 }
@@ -31,14 +33,16 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
     private const string NamespaceUri = "urn:industrial-sim:runtime";
     private readonly IDeviceRuntime _runtime;
     private readonly OpcUaTransportFaultController _transportFault;
+    private readonly IReadOnlyDictionary<string, string> _dataPointNodeIds;
     private readonly Dictionary<string, BaseDataVariableState> _variables = new(StringComparer.OrdinalIgnoreCase);
     private FolderState? _device;
 
-    public IndustrialNodeManager(IServerInternal server, ApplicationConfiguration configuration, IDeviceRuntime runtime, OpcUaTransportFaultController transportFault)
+    public IndustrialNodeManager(IServerInternal server, ApplicationConfiguration configuration, IDeviceRuntime runtime, OpcUaTransportFaultController transportFault, IReadOnlyDictionary<string, string> dataPointNodeIds)
         : base(server, configuration, NamespaceUri)
     {
         _runtime = runtime;
         _transportFault = transportFault;
+        _dataPointNodeIds = dataPointNodeIds;
         _runtime.RuntimeEventPublished += OnRuntimeEvent;
     }
 
@@ -71,7 +75,7 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
         {
             var variable = new BaseDataVariableState(device)
             {
-                NodeId = new NodeId($"{_runtime.Definition.Id.Value}/{point.Name}", NamespaceIndex),
+                NodeId = new NodeId(_dataPointNodeIds.TryGetValue(point.Name, out var configuredNodeId) ? configuredNodeId : $"{_runtime.Definition.Id.Value}/{point.Name}", NamespaceIndex),
                 BrowseName = new QualifiedName(point.Name, NamespaceIndex),
                 DisplayName = point.Name,
                 TypeDefinitionId = VariableTypeIds.BaseDataVariableType,
@@ -126,7 +130,7 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
     {
         var transport = _transportFault.BeforeService();
         if (StatusCode.IsBad(transport.StatusCode)) return transport;
-        var point = NodeName(node);
+        var point = DataPointName(node);
         value = _runtime.Read(point)?.Value!;
         statusCode = StatusCodes.Good; timestamp = DateTime.UtcNow;
         return ServiceResult.Good;
@@ -136,7 +140,7 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
     {
         var transport = _transportFault.BeforeService();
         if (StatusCode.IsBad(transport.StatusCode)) return transport;
-        var result = _runtime.Write(NodeName(node), value);
+        var result = _runtime.Write(DataPointName(node), value);
         return result.Succeeded ? ServiceResult.Good : StatusCodes.BadNotWritable;
     }
 
@@ -165,7 +169,12 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
         }
     }
 
-    private static string NodeName(NodeState node) => ((string)node.NodeId.Identifier).Split('/').Last();
+    private string DataPointName(NodeState node)
+    {
+        var identifier = (string)node.NodeId.Identifier;
+        return _dataPointNodeIds.FirstOrDefault(pair => pair.Value.Equals(identifier, StringComparison.Ordinal)).Key
+            ?? identifier.Split('/').Last();
+    }
     private static byte ToAccessLevel(DataPointAccess access) => access switch
     {
         DataPointAccess.Read => AccessLevels.CurrentRead,

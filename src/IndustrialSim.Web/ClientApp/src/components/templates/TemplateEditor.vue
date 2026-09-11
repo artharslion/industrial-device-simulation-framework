@@ -25,11 +25,14 @@ async function save() {
 
 async function instantiate() {
   message.value = ''
-  const portBindings = [
-    instance.value.modbusPort > 0 ? { protocol: 'modbus', port: instance.value.modbusPort } : null,
-    instance.value.opcuaPort > 0 ? { protocol: 'opcua', port: instance.value.opcuaPort } : null,
-  ].filter((value): value is { protocol: string; port: number } => value !== null)
-  try { await editor.instantiate({ ...instance.value, portBindings }); workspace.notify(`Device ${instance.value.deviceId} created`) }
+  const modbusProfile = editor.draft.mappings.find(mapping => mapping.protocol === 'modbus')?.name
+  const opcuaProfile = editor.draft.mappings.find(mapping => mapping.protocol === 'opcua')?.name
+  if (instance.value.modbusPort > 0 && !modbusProfile) { message.value = 'Select or create a Modbus mapping profile before instantiation.'; return }
+  const protocols = {
+    modbus: instance.value.modbusPort > 0 ? { enabled: true, port: instance.value.modbusPort, mappingProfile: modbusProfile } : null,
+    opcua: instance.value.opcuaPort > 0 ? { enabled: true, port: instance.value.opcuaPort, mappingProfile: opcuaProfile ?? null } : null,
+  }
+  try { await editor.instantiate({ deviceId: instance.value.deviceId, deterministic: instance.value.deterministic, seed: instance.value.seed, protocols }); workspace.notify(`Device ${instance.value.deviceId} created`) }
   catch (cause) { message.value = cause instanceof Error ? cause.message : String(cause) }
 }
 

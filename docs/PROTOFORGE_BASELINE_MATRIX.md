@@ -14,9 +14,9 @@ Statuses are `Not Started`, `In Progress`, `Verified`, and `Constrained`.
 
 | Capability | Owner module | Target wave | Acceptance evidence | Status |
 |---|---|---:|---|---|
-| devices: multi-device lifecycle and batch operations | Hosting / Application | 1 | `SimulationRegistryTests` and `V1ApiContractTests` | Verified |
+| devices: multi-device lifecycle, launch, restore, and batch operations | Hosting / Application | 1 | `SimulationRegistryTests`, `V1ApiContractTests`, and catalog restore tests | Verified |
 | protocols: catalog, mappings, supervision, and status | Hosting / Protocols | 1, 4 | API tests plus per-protocol capability manifests and interoperability records | In Progress |
-| templates: versioned definitions and mapping profiles | Templates | 2, 4 | `TemplateCatalogTests`, `TemplatePersistenceTests`, and `VisualModelingApiTests` | Verified |
+| templates: versioned definitions and executable mapping profiles | Templates | 2, 4 | `TemplateCatalogTests`, `TemplatePersistenceTests`, `VisualModelingApiTests`, and real-client template-instance access | Verified |
 | scenarios: persisted CRUD and runtime lifecycle | Application / Scenarios | 1, 2 | `ScenarioParserTests`, `VisualModelingApiTests`, and Vue editor tests | Verified |
 | testing: user cases, suites, assertions, and reports | Testing | 3 | Domain, execution, API, and report tests | Not Started |
 | forwarding: bounded delivery targets | Integrations | 3 | Outage, retry, backpressure, and runtime-isolation tests | Not Started |

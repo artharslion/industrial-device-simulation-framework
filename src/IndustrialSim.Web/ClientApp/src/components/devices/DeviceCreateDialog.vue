@@ -36,7 +36,7 @@ async function submit() {
 
 <template>
   <section class="editor-surface device-create" aria-labelledby="new-device-title">
-    <header class="editor-head"><div><span class="eyebrow">Quick create</span><h2 id="new-device-title">New simulation device</h2><p>Define logical datapoints first, then reserve optional protocol ports.</p></div><button @click="emit('cancelled')">Cancel</button></header>
+    <header class="editor-head"><div><span class="eyebrow">Quick create</span><h2 id="new-device-title">New simulation device</h2><p>Define logical datapoints, then configure real protocol adapters or leave the device protocol-free.</p></div><button @click="emit('cancelled')">Cancel</button></header>
     <div v-if="error" class="inline-error" role="alert">{{ error }}</div>
     <form @submit.prevent="submit">
       <section class="editor-section"><div class="section-title"><span>01</span><div><h3>Identity and runtime</h3><p>IDs are unique across active simulations.</p></div></div><div class="form-grid three">
@@ -59,9 +59,14 @@ async function submit() {
           <div><label>Initial value</label><input v-model="point.initialText" /></div><div><label>Unit</label><input v-model="point.unit" /></div><div><label>Description</label><input v-model="point.description" /></div>
         </div><button v-if="editor.form.profile === 'custom'" type="button" class="danger compact-action" :disabled="editor.form.dataPoints.length === 1" @click="editor.removeDataPoint(index)">Remove datapoint</button></article></div>
       </section>
-      <section class="editor-section"><div class="section-title"><span>04</span><div><h3>Protocol port bindings</h3><p>One logical device can reserve ports for multiple protocol adapters.</p></div><button type="button" @click="editor.addBinding">Add binding</button></div>
-        <div v-if="editor.form.portBindings.length === 0" class="resource-state compact">No ports reserved. Add OPC UA or Modbus TCP when needed.</div>
-        <div v-for="(binding, index) in editor.form.portBindings" :key="index" class="binding-row"><div><label>Protocol</label><select v-model="binding.protocol"><option value="opcua">OPC UA</option><option value="modbus">Modbus TCP</option></select></div><div><label>Port</label><input v-model.number="binding.port" type="number" min="1" max="65535" /></div><button type="button" class="danger" @click="editor.removeBinding(index)">Remove</button></div>
+      <section class="editor-section"><div class="section-title"><span>04</span><div><h3>Protocol adapters</h3><p>OPC UA uses the documented device/datapoint node mapping. Modbus requires explicit addresses.</p></div><button type="button" @click="editor.addBinding">Add protocol</button></div>
+        <div v-if="editor.form.portBindings.length === 0" class="resource-state compact">No protocol configured. The device will remain available through Web/API only.</div>
+        <article v-for="(binding, index) in editor.form.portBindings" :key="index" class="mapping-card"><div class="binding-row"><div><label>Protocol</label><select v-model="binding.protocol"><option value="opcua">OPC UA</option><option value="modbus">Modbus TCP</option></select></div><div><label>Port</label><input v-model.number="binding.port" type="number" min="1" max="65535" /></div><button type="button" class="danger" @click="editor.removeBinding(index)">Remove</button></div>
+          <div v-if="binding.protocol === 'opcua'" class="resource-state compact">Default mapping: device object, datapoint variables, and command methods use their logical names.</div>
+          <div v-else><div class="section-title"><div><h3>Modbus mappings</h3><p>Addresses are zero-based and never allocated implicitly.</p></div><button type="button" @click="editor.addModbusMapping(index)">Add mapping</button></div>
+            <div v-for="(mapping, mappingIndex) in binding.mappings" :key="mappingIndex" class="binding-row definition-row"><select v-model="mapping.dataPoint"><option v-for="point in editor.form.dataPoints" :key="point.name" :value="point.name">{{ point.name }}</option></select><select v-model="mapping.kind"><option value="holding">Holding register</option><option value="input">Input register</option><option value="coil">Coil</option><option value="discrete">Discrete input</option></select><input v-model.number="mapping.address" type="number" min="0" aria-label="Modbus address" /><input v-model="mapping.dataType" aria-label="Wire type" /><button type="button" class="danger" @click="editor.removeModbusMapping(index, mappingIndex)">Remove</button></div>
+          </div>
+        </article>
       </section>
       <footer class="editor-footer"><span class="hint">Server validation reports duplicate IDs, port conflicts, and invalid mappings.</span><button class="primary" type="submit" :disabled="busy">{{ busy ? 'Creating…' : 'Create device' }}</button></footer>
     </form>

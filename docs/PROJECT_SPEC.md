@@ -174,6 +174,45 @@ from effective host configuration. Secret storage, additional protocols,
 template distribution, test reporting, forwarding, and recording/replay remain
 out of scope.
 
+## 2.6 Device launch and restore closure
+
+YAML loading, Web Quick Create, template instantiation, and catalog restoration
+must compose the same validated device-launch contract before a
+`SimulationHost` enters the registry. That contract contains the logical
+`DeviceDefinition`, simulation options, enabled OPC UA and Modbus TCP adapter
+configuration, resolved protocol mappings, and optional immutable template and
+mapping-profile provenance. A protocol port alone is not an adapter
+configuration.
+
+OPC UA may use the framework's documented default mapping: one device object,
+datapoint variables named from the device/datapoint identity, and command
+methods named from the device/command identity. Modbus TCP never receives
+implicit register allocation; an enabled Modbus adapter requires explicit,
+validated address kind, zero-based address, datatype, access, byte order, and
+word order. Template instances record resolved mappings so deleting a template
+does not change or invalidate an existing instance.
+
+The SQLite device catalog stores a versioned launch document and desired
+lifecycle state. It does not store continuously changing datapoint values,
+simulation clocks, active faults, or other live runtime state. Legacy catalog
+documents that only reserved ports must not silently open those ports during
+restore.
+
+At Web startup, the explicitly configured YAML device is the boot device and
+retains its existing startup behavior. Catalog devices are reconstructed one
+at a time; invalid JSON, incompatible behavior, invalid mappings, duplicate
+IDs, port conflicts, and adapter startup failures are isolated to the affected
+device and must not prevent other devices or the Web host from starting.
+
+Catalog desired state is `Stopped` or `Running`. All valid catalog definitions
+are reconstructed stopped. The safe default
+`IndustrialSim:Restore:AutoStartDesiredRunning=false` preserves `Running`
+intent without automatically reopening protocol listeners. When an operator
+explicitly enables that setting, desired-Running devices start independently;
+one failure leaves that device stopped and does not block other restores.
+`Paused` is runtime-only and restores stopped unless a future snapshot contract
+states otherwise.
+
 ---
 
 # 3. Non-Goals

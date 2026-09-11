@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import type { BuiltInDeviceProfile, DeviceCreateRequest, ScalarValue } from '../types'
+import type { BuiltInDeviceProfile, DeviceCreateRequest, ModbusMappingRequest, ScalarValue } from '../types'
 
 export interface EditableDataPoint {
   name: string
@@ -27,13 +27,17 @@ export function useDeviceEditor() {
     commands: [] as string[],
     events: [] as string[],
     behaviorParameters: [] as EditableBehaviorParameter[],
-    portBindings: [] as Array<{ protocol: string; port: number }>,
+    portBindings: [] as Array<{ protocol: string; port: number; mappings: ModbusMappingRequest[] }>,
   })
 
   function addDataPoint() { form.dataPoints.push(newDataPoint()) }
   function removeDataPoint(index: number) { if (form.dataPoints.length > 1) form.dataPoints.splice(index, 1) }
-  function addBinding() { form.portBindings.push({ protocol: 'opcua', port: 4840 }) }
+  function addBinding() { form.portBindings.push({ protocol: 'opcua', port: 4840, mappings: [] }) }
   function removeBinding(index: number) { form.portBindings.splice(index, 1) }
+  function addModbusMapping(index: number) {
+    form.portBindings[index]?.mappings.push({ dataPoint: form.dataPoints[0]?.name ?? '', kind: 'holding', address: 0, dataType: form.dataPoints[0]?.dataType ?? 'uint16', access: 'readwrite', byteOrder: 'big', wordOrder: 'big' })
+  }
+  function removeModbusMapping(bindingIndex: number, mappingIndex: number) { form.portBindings[bindingIndex]?.mappings.splice(mappingIndex, 1) }
 
   function applyProfile(profile: BuiltInDeviceProfile | null) {
     if (!profile) {
@@ -86,7 +90,14 @@ export function useDeviceEditor() {
     form.behaviorParameters.splice(0, form.behaviorParameters.length, ...Object.entries(value.behavior?.parameters ?? {}).map(([name, parameter]) => ({
       name, value: Number(parameter), minimum: 0, unit: '', description: '',
     })))
-    form.portBindings.splice(0, form.portBindings.length, ...value.portBindings.map(binding => ({ ...binding })))
+    const bindings: Array<{ protocol: string; port: number; mappings: ModbusMappingRequest[] }> = []
+    if (value.protocols?.opcua?.enabled) {
+      const endpointPort = value.protocols.opcua.endpoint ? Number(new URL(value.protocols.opcua.endpoint.replace('opc.tcp:', 'http:')).port) : 0
+      bindings.push({ protocol: 'opcua', port: value.protocols.opcua.port ?? (endpointPort || 4840), mappings: [] })
+    }
+    if (value.protocols?.modbus?.enabled) bindings.push({ protocol: 'modbus', port: value.protocols.modbus.port, mappings: structuredClone(value.protocols.modbus.mappings ?? []) })
+    if (!bindings.length) bindings.push(...value.portBindings.map(binding => ({ ...binding, mappings: [] })))
+    form.portBindings.splice(0, form.portBindings.length, ...bindings)
   }
 
   function scalar(row: EditableDataPoint): ScalarValue {
@@ -111,6 +122,10 @@ export function useDeviceEditor() {
     if (invalidParameter) throw new Error(`${invalidParameter.name} must be at least ${invalidParameter.minimum}.`)
     if (form.portBindings.some(item => item.port < 1 || item.port > 65535)) throw new Error('Protocol ports must be between 1 and 65535.')
     if (new Set(form.portBindings.map(item => item.port)).size !== form.portBindings.length) throw new Error('Protocol ports must be unique.')
+    if (new Set(form.portBindings.map(item => item.protocol)).size !== form.portBindings.length) throw new Error('Only one configuration per protocol is allowed.')
+    const modbus = form.portBindings.find(item => item.protocol === 'modbus')
+    if (modbus && modbus.mappings.length === 0) throw new Error('Modbus requires at least one explicit mapping.')
+    const opcua = form.portBindings.find(item => item.protocol === 'opcua')
     return {
       id: form.id.trim(), type: form.type.trim(), deterministic: form.deterministic, seed: Number(form.seed),
       dataPoints: form.dataPoints.map(item => ({
@@ -122,9 +137,13 @@ export function useDeviceEditor() {
       behavior: form.profile === 'custom'
         ? { profile: 'none', parameters: {} }
         : { profile: form.profile, parameters: Object.fromEntries(form.behaviorParameters.map(parameter => [parameter.name, Number(parameter.value)])) },
-      portBindings: form.portBindings.map(item => ({ protocol: item.protocol, port: Number(item.port) })),
+      protocols: {
+        opcua: opcua ? { enabled: true, port: Number(opcua.port) } : null,
+        modbus: modbus ? { enabled: true, port: Number(modbus.port), mappings: modbus.mappings.map(mapping => ({ ...mapping })) } : null,
+      },
+      portBindings: [],
     }
   }
 
-  return { form, addDataPoint, removeDataPoint, addBinding, removeBinding, applyProfile, load, toRequest }
+  return { form, addDataPoint, removeDataPoint, addBinding, removeBinding, addModbusMapping, removeModbusMapping, applyProfile, load, toRequest }
 }

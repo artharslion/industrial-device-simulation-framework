@@ -50,7 +50,7 @@ public sealed record SimulationHostOptions(bool Deterministic = false, int Seed 
 
 public sealed class SimulationHost : IAsyncDisposable
 {
-    private readonly LoadedConfiguration _configuration;
+    private readonly DeviceLaunchDefinition _launch;
     private readonly Dictionary<string, IProtocolAdapter> _protocols = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentQueue<object> _events = new();
     private readonly Dictionary<string, DataFaultProcessor> _dataFaultProcessors = new(StringComparer.OrdinalIgnoreCase);
@@ -65,15 +65,22 @@ public sealed class SimulationHost : IAsyncDisposable
     private TimeSpan _lastBehaviorTime;
     private bool _disposed;
 
-    private SimulationHost(LoadedConfiguration configuration, SimulationHostOptions options)
+    private SimulationHost(DeviceLaunchDefinition launch)
     {
-        _configuration = configuration;
-        _options = options;
+        ValidateLaunch(launch);
+        _launch = launch;
+        _options = launch.Options;
+        var configuration = launch.Definition;
+        var options = launch.Options;
         Engine = new SimulationEngine(options.Deterministic ? new DeterministicClock() : new RealTimeClock());
-        var state = new StateStore(configuration.Device);
+        var state = new StateStore(configuration);
         var commandHandlers = new Dictionary<string, Func<CancellationToken, Task>>(StringComparer.OrdinalIgnoreCase);
-        _behavior = ResolveBehavior(configuration.Device);
-        if (configuration.Device.Behavior is not null) BuiltInDeviceProfiles.Validate(configuration.Device, configuration.Device.Behavior);
+        _behavior = ResolveBehavior(configuration);
+        if (configuration.Behavior is not null)
+        {
+            try { BuiltInDeviceProfiles.Validate(configuration, configuration.Behavior); }
+            catch (ArgumentException exception) { throw new DeviceLaunchException(exception.Message, "invalidBehaviorProfile"); }
+        }
         if (_behavior is not null && !_behavior.Profile.Equals("none", StringComparison.OrdinalIgnoreCase))
         {
             switch (_behavior.Profile.ToLowerInvariant())
@@ -94,18 +101,22 @@ public sealed class SimulationHost : IAsyncDisposable
                     break;
             }
         }
-        Runtime = new InMemoryDeviceRuntime(configuration.Device, state, commandHandlers, () => Engine.CurrentTime);
+        Runtime = new InMemoryDeviceRuntime(configuration, state, commandHandlers, () => Engine.CurrentTime);
         FaultManager = new FaultManager(Engine);
         _deviceFaultController = new DeviceFaultController(Runtime.State);
         Runtime.RuntimeEventPublished += @event => _events.Enqueue(@event);
         FaultManager.LifecycleChanged += OnFaultLifecycleChanged;
 
-        if (configuration.Configuration.Protocols?.Opcua?.Enabled == true)
-            _protocols.Add("opcua", new OpcUaAdapter());
-        if (configuration.Configuration.Protocols?.Modbus?.Enabled == true)
+        if (launch.OpcUa is not null)
+        {
+            var opcUa = new OpcUaAdapter();
+            opcUa.Configure(launch.OpcUa.DataPointNodeIds);
+            _protocols.Add("opcua", opcUa);
+        }
+        if (launch.Modbus is not null)
         {
             var modbus = new ModbusAdapter();
-            modbus.Configure(configuration.ModbusMappings);
+            modbus.Configure(launch.Modbus.Mappings);
             _protocols.Add("modbus", modbus);
         }
     }
@@ -122,7 +133,9 @@ public sealed class SimulationHost : IAsyncDisposable
     public bool IsDeterministic => _options.Deterministic;
     public int Seed => _options.Seed;
     public DeviceBehaviorDefinition? Behavior => _behavior;
-    public int WebPort => _options.Overrides?.WebPort ?? _configuration.Configuration.Web?.Port ?? 8080;
+    public DeviceLaunchDefinition LaunchDefinition => _launch;
+    public IReadOnlyList<ProtocolPortBinding> PortBindings => _launch.PortBindings;
+    public int WebPort => _launch.WebPort;
 
     public static Task<SimulationHost> LoadAsync(string path, CancellationToken cancellationToken = default) => LoadAsync(path, new SimulationHostOptions(), cancellationToken);
 
@@ -131,10 +144,21 @@ public sealed class SimulationHost : IAsyncDisposable
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Configuration path cannot be blank.", nameof(path));
         if (!File.Exists(path)) throw new FileNotFoundException($"Device configuration file '{path}' was not found.", path);
         var yaml = await File.ReadAllTextAsync(path, cancellationToken);
-        return new SimulationHost(new YamlConfigurationLoader().Load(yaml), options);
+        var loaded = new YamlConfigurationLoader().Load(yaml);
+        var opcUa = loaded.Configuration.Protocols?.Opcua is { Enabled: true } opc
+            ? new OpcUaLaunchDefinition(options.Overrides?.OpcUaEndpoint ?? opc.Endpoint ?? "opc.tcp://0.0.0.0:4840")
+            : null;
+        var modbus = loaded.Configuration.Protocols?.Modbus is { Enabled: true } modbusConfiguration
+            ? new ModbusLaunchDefinition(options.Overrides?.ModbusPort ?? modbusConfiguration.Port, loaded.ModbusMappings)
+            : null;
+        var webPort = options.Overrides?.WebPort ?? loaded.Configuration.Web?.Port ?? 8080;
+        return Create(new DeviceLaunchDefinition(loaded.Device, options, opcUa, modbus, new DeviceLaunchSource("yaml"), webPort));
     }
 
-    public static SimulationHost Create(DeviceDefinition definition, SimulationHostOptions? options = null) => new(new LoadedConfiguration(new RootConfiguration(), definition, []), options ?? new SimulationHostOptions());
+    public static SimulationHost Create(DeviceLaunchDefinition launch) => new(launch);
+
+    public static SimulationHost Create(DeviceDefinition definition, SimulationHostOptions? options = null) =>
+        Create(new DeviceLaunchDefinition(definition, options ?? new SimulationHostOptions()));
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -152,20 +176,20 @@ public sealed class SimulationHost : IAsyncDisposable
             await Engine.StartAsync(cancellationToken);
             foreach (var (name, protocol) in _protocols)
             {
+                started.Add(protocol);
                 switch (name)
                 {
                     case "opcua":
-                        var endpoint = _options.Overrides?.OpcUaEndpoint ?? _configuration.Configuration.Protocols?.Opcua?.Endpoint ?? "opc.tcp://0.0.0.0:4840";
+                        var endpoint = _launch.OpcUa!.Endpoint;
                         var opcPort = Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && uri.Port > 0 ? uri.Port : 4840;
                         await protocol.StartAsync(Runtime, new ProtocolOptions(endpoint, opcPort), cancellationToken);
                         break;
                     case "modbus":
-                        var modbusPort = _options.Overrides?.ModbusPort ?? _configuration.Configuration.Protocols?.Modbus?.Port ?? 5020;
+                        var modbusPort = _launch.Modbus!.Port;
                         await protocol.StartAsync(Runtime, new ProtocolOptions(Port: modbusPort), cancellationToken);
                         if (modbusPort == 0) await ((ModbusAdapter)protocol).StartServerAsync(0, cancellationToken);
                         break;
                 }
-                started.Add(protocol);
             }
             IsRunning = true;
             Runtime.Publish(new DeviceStarted(Engine.CurrentTime, Runtime.Definition.Id));
@@ -177,6 +201,45 @@ public sealed class SimulationHost : IAsyncDisposable
             await Engine.StopAsync(CancellationToken.None);
             throw;
         }
+    }
+
+    private static void ValidateLaunch(DeviceLaunchDefinition launch)
+    {
+        ArgumentNullException.ThrowIfNull(launch);
+        ArgumentNullException.ThrowIfNull(launch.Definition);
+        if (launch.OpcUa is { } opcUa)
+        {
+            if (!Uri.TryCreate(opcUa.Endpoint, UriKind.Absolute, out var uri) ||
+                !uri.Scheme.Equals("opc.tcp", StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(uri.Host) || uri.Port is < 1 or > 65535)
+                throw new DeviceLaunchException($"OPC UA endpoint '{opcUa.Endpoint}' must be an absolute opc.tcp URI with a valid host and port.", "invalidOpcUaConfiguration");
+            if (opcUa.DataPointNodeIds is { } nodeIds)
+            {
+                var points = launch.Definition.DataPoints.Select(point => point.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (var (dataPoint, nodeId) in nodeIds)
+                {
+                    if (!points.Contains(dataPoint)) throw new DeviceLaunchException($"OPC UA mapping targets unknown data point '{dataPoint}'.", "invalidOpcUaConfiguration");
+                    if (string.IsNullOrWhiteSpace(nodeId)) throw new DeviceLaunchException($"OPC UA mapping for '{dataPoint}' requires a node id.", "invalidOpcUaConfiguration");
+                }
+                var duplicate = nodeIds.Values.GroupBy(value => value, StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1);
+                if (duplicate is not null) throw new DeviceLaunchException($"OPC UA node id '{duplicate.Key}' is mapped more than once.", "invalidOpcUaConfiguration");
+            }
+        }
+        if (launch.Modbus is { } modbus)
+        {
+            if (modbus.Port is < 1 or > 65535) throw new DeviceLaunchException("Modbus port must be between 1 and 65535.", "invalidModbusMapping");
+            if (modbus.Mappings.Count == 0) throw new DeviceLaunchException("Enabled Modbus requires at least one mapping.", "modbusMappingRequired");
+            try
+            {
+                ModbusMappingValidator.ValidateResolved(modbus.Mappings);
+                YamlConfigurationLoader.ValidateMappings(launch.Definition, modbus.Mappings);
+            }
+            catch (ArgumentException exception)
+            {
+                throw new DeviceLaunchException(exception.Message, "invalidModbusMapping");
+            }
+        }
+        if (launch.WebPort is < 1 or > 65535) throw new ArgumentOutOfRangeException(nameof(launch), "Web port must be between 1 and 65535.");
     }
 
     public ScenarioRunner RunScenario(string yaml)

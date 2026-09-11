@@ -35,7 +35,7 @@ public sealed class VisualModelingApiTests
             deviceId = "template-pump",
             deterministic = true,
             seed = 42,
-            portBindings = new[] { new { protocol = "modbus", port = FreePort() } }
+            protocols = new { modbus = new { enabled = true, port = FreePort(), mappingProfile = "holding" } }
         });
         Assert.Equal(HttpStatusCode.Created, instantiate.StatusCode);
         Assert.Contains("template-pump", await fixture.Client.GetStringAsync("/api/v1/devices"), StringComparison.Ordinal);

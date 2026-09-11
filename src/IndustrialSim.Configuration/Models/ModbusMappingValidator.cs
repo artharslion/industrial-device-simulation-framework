@@ -43,10 +43,34 @@ public static class ModbusMappingValidator
             if (address + width > 65536) throw new ArgumentException($"Mapping '{name}' exceeds the Modbus address range.");
             result.Add(new(name, address, width, kind, type, access, byteOrder, wordOrder));
         }
-        foreach (var left in result)
-            foreach (var right in result.Where(item => item != left && item.Kind == left.Kind))
-                if (left.Address < right.Address + right.Width && right.Address < left.Address + left.Width)
-                    throw new ArgumentException($"Modbus mappings '{left.Name}' and '{right.Name}' overlap.");
+        ValidateResolved(result);
         return result;
+    }
+
+    public static void ValidateResolved(IReadOnlyList<ValidatedModbusMapping> mappings)
+    {
+        foreach (var mapping in mappings)
+        {
+            if (mapping.Kind is not ("coil" or "discrete" or "input" or "register"))
+                throw new ArgumentException($"Mapping '{mapping.Name}' has unsupported address kind '{mapping.Kind}'.");
+            if (mapping.Address < 0 || mapping.Address > 65535 || mapping.Width < 1 || mapping.Address + mapping.Width > 65536)
+                throw new ArgumentException($"Mapping '{mapping.Name}' is outside the Modbus address range.");
+            var expectedWidth = mapping.DataType.ToLowerInvariant() switch
+            {
+                "int8" or "uint8" or "int16" or "uint16" or "boolean" => 1,
+                "int32" or "uint32" or "float" or "float32" => 2,
+                "int64" or "uint64" or "double" => 4,
+                _ => throw new ArgumentException($"Mapping '{mapping.Name}' has unsupported Modbus type '{mapping.DataType}'.")
+            };
+            if (mapping.Width != expectedWidth) throw new ArgumentException($"Mapping '{mapping.Name}' width {mapping.Width} does not match type '{mapping.DataType}'.");
+        }
+        for (var leftIndex = 0; leftIndex < mappings.Count; leftIndex++)
+        for (var rightIndex = leftIndex + 1; rightIndex < mappings.Count; rightIndex++)
+        {
+            var left = mappings[leftIndex];
+            var right = mappings[rightIndex];
+            if (right.Kind == left.Kind && left.Address < right.Address + right.Width && right.Address < left.Address + left.Width)
+                throw new ArgumentException($"Modbus mappings '{left.Name}' and '{right.Name}' overlap.");
+        }
     }
 }

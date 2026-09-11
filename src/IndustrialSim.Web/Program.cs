@@ -2,7 +2,10 @@ using IndustrialSim.Web;
 using IndustrialSim.Web.Api.V1;
 using IndustrialSim.Web.Hubs;
 using IndustrialSim.Hosting;
+using IndustrialSim.Application.Devices;
+using IndustrialSim.Persistence;
 using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuredPath = Environment.GetEnvironmentVariable("INDUSTRIALSIM_DEVICE_CONFIG");
@@ -47,6 +50,15 @@ app.MapIndustrialSimV1Api();
 app.MapRuntimeHub();
 app.MapOpenApi("/openapi/v1.json");
 app.MapIndustrialSimDeveloperConsole();
+
+using (var scope = app.Services.CreateScope())
+{
+    await scope.ServiceProvider.GetRequiredService<IndustrialSimDbContext>().Database.MigrateAsync(app.Lifetime.ApplicationStopping);
+    var autoStart = builder.Configuration.GetValue("IndustrialSim:Restore:AutoStartDesiredRunning", false);
+    var results = await scope.ServiceProvider.GetRequiredService<DeviceCatalogRestoreService>().RestoreAsync(autoStart, app.Lifetime.ApplicationStopping);
+    foreach (var result in results.Where(result => !result.Restored || result.ErrorCode is not null))
+        app.Logger.LogError("Device restore for {DeviceId} completed with code {ErrorCode}: {Error}", result.DeviceId, result.ErrorCode, result.Error);
+}
 
 try
 {

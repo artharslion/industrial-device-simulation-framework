@@ -49,17 +49,32 @@
 3. 如果需要可重复结果，启用确定性模式并指定随机种子；
 4. 选择内置 profile 时，配置行为参数和数据点初始值；
 5. 选择 Custom 时，自行定义逻辑数据点；
-6. 按需添加不冲突的 OPC UA 或 Modbus 端口。
+6. 选择设备是否需要暴露 OPC UA 或 Modbus TCP；
+7. 配置可用的协议端口；使用 Modbus 时，还要为需要暴露的数据点配置显式映射。
 
 Pump、Motor 和 Sensor 会在创建前显示行为摘要、命令、事件、必需数据点和参数默认值。因为运行时行为依赖这套契约，所以必需数据点的名称、类型和访问模式会被锁定；初始值和描述仍然可以修改。
 
 Custom 会显式创建 `none` 行为 profile，不包含周期性的内置行为。它的状态只会通过允许的写入、场景、命令、故障或其他显式运行时操作发生变化。
 
-这种方式适合快速实验。创建结果是活动的内存仿真，不应该默认将其视为可复用模型。
+协议必须显式配置：
+
+- 如果没有启用任何协议，设备会以无网络适配器的方式创建。创建设备本身不会使 OPC UA 或 Modbus 客户端能够访问它。
+- 启用 OPC UA 后，设备启动时会创建真实 OPC UA Server。如果没有由模板 mapping profile 覆盖，数据点 NodeId 使用 `${deviceId}/${datapoint}`，命令 Method NodeId 使用 `${deviceId}/${command}`。
+- 启用 Modbus 时必须提供映射。Quick Create 编辑器会为每个需要暴露的数据点采集地址区域、零基地址和线上的数据类型，并应用已定义的访问模式、字节序和字序默认值；API 和持久化启动定义会显式携带全部 mapping 字段。只填写 Modbus 端口但没有 mapping 会被拒绝，不会被伪装成已经配置协议。
+- 所有已注册设备的协议端口必须唯一。即使设备处于 stopped 状态，Registry 仍会为其保留启动端口。
+
+这种方式适合快速实验。设备启动定义会保存在 SQLite Device Catalog 中，而实时数据点仍保存在该设备内存中的 `StateStore`。如果设备模型本身需要复用，应使用模板。
 
 ### 创建可复用设备模型
 
 需要重复使用设备定义时，使用 **Templates → New template**。先定义逻辑数据点和命令，再添加独立的 OPC UA 或 Modbus 映射配置。保存模板后，使用唯一设备 ID 和空闲端口将其实例化。
+
+实例化模板时：
+
+- 为需要 mapping 的协议选择准确的 mapping profile；
+- Modbus 必须选择 mapping profile；
+- OPC UA 可以选择 profile，也可以使用默认 NodeId 规则；
+- 解析后的 mapping 会复制到设备启动定义中，因此即使之后删除源模板，已经实例化的设备仍然可以恢复。
 
 团队共享模型、重复测试或创建多个同类型设备时，应优先使用模板。
 
@@ -197,7 +212,7 @@ examples/scenarios/overheating.yaml
 
 使用 Modbus 时：
 
-1. 打开设备定义或原始 YAML；
+1. 打开设备详情、所选模板 mapping profile 或原始 YAML；
 2. 使用准确的地址区域和寄存器/线圈编号；
 3. 使用配置的数据类型、字节序和字序；
 4. 注意 32 位和 64 位数据会占用多个 16 位寄存器。
@@ -239,7 +254,21 @@ examples/scenarios/overheating.yaml
 4. 在使用该场景的测试中记录确定性随机种子和所需持续时间；
 5. 实例化多个设备时使用不同端口。
 
-模板、场景定义、设置、用户和目录记录保存在 SQLite 中。实时设备状态保存在运行时 `StateStore` 中，二者具有不同的生命周期。
+模板、场景定义、设置、用户和设备启动记录保存在 SQLite 中。启动记录包含逻辑定义、仿真选项、启用的适配器、解析后的 mapping、源模板信息和 desired lifecycle state。实时数据点、活动故障、仿真时间以及持续变化的运行状态仍由每个设备的 `StateStore` 持有，不会把 SQLite 作为实时 datapoint store。
+
+### 理解服务重启和 desired state
+
+Web 服务重启时，会先加载显式配置的 YAML boot device，然后逐个恢复 Device Catalog 中保存的设备。某个设备的定义损坏、mapping 无效、ID 重复或端口冲突时，只会导致该设备恢复失败，不会阻止其他设备或 Web 服务启动。
+
+执行 start/stop 操作时，Catalog 会将 `Running` 或 `Stopped` 记录为 desired state。默认情况下，恢复出的设备会保持 stopped，以避免服务重启后意外重新开放工业协议监听端口。管理员可以通过以下配置显式允许 desired-Running 设备自动启动：
+
+```text
+IndustrialSim:Restore:AutoStartDesiredRunning=true
+```
+
+启用自动启动后，每台设备仍然独立启动。如果监听端口无法绑定，该设备会保持已注册但 stopped，`Running` 意图会保留以便重试，其他设备继续恢复。释放冲突端口后，可以再次启动该设备。
+
+旧版 Catalog 中如果只保存了协议端口预留信息，恢复时不会静默启用协议。需要先编辑并保存完整协议配置，外部客户端才能连接。
 
 模板中的 behavior metadata 使用如下 JSON：
 
@@ -280,6 +309,7 @@ examples/scenarios/overheating.yaml
 - OPC UA 或 Modbus 观察到的逻辑状态与 Web 控制台一致；
 - Events 能够解释生命周期、场景和故障操作的顺序；
 - 可复用设备和场景已经保存为模板或目录数据。
+- Web 创建的协议设备在服务重启后仍可找到，并且只有部署显式启用自动启动策略时才会自动开放协议监听。
 
 如果需要处理服务启动、部署、环境变量、端口、认证模式、数据库路径或服务级问题，请返回[服务启动指南](STARTUP_GUIDE.zh-CN.md)。
 

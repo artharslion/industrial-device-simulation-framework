@@ -5,6 +5,7 @@ public interface IDeviceCatalogRepository
     Task<DeviceCatalogItem?> FindAsync(string id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<DeviceCatalogItem>> ListAsync(CancellationToken cancellationToken = default);
     Task UpsertAsync(DeviceCatalogItem item, CancellationToken cancellationToken = default);
+    Task<bool> SetDesiredStateAsync(string id, string desiredState, CancellationToken cancellationToken = default);
     Task<bool> RemoveAsync(string id, CancellationToken cancellationToken = default);
 }
 

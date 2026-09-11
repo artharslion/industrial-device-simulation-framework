@@ -49,17 +49,32 @@ Use **Devices → New device** when you need a temporary runtime device. Enter:
 3. deterministic mode and seed if reproducibility matters;
 4. behavior parameters and initial values when a built-in profile is selected;
 5. logical datapoints for a Custom device;
-6. optional, unique OPC UA or Modbus ports.
+6. whether the device should expose OPC UA or Modbus TCP;
+7. an available protocol port and, for Modbus, an explicit mapping for every datapoint that should be exposed.
 
 Pump, Motor, and Sensor profiles show their behavior summary, commands, events, required datapoints, and parameter defaults before creation. Their required datapoint names, types, and access modes are locked because the runtime behavior depends on that contract; initial values and descriptions remain editable.
 
 Custom creates an explicit `none` behavior profile. It has no periodic built-in behavior: its state changes only through permitted writes, scenarios, commands, faults, or other explicit runtime operations.
 
-This is the quickest path for an experiment. The device is an active in-memory simulation and should not be treated as a reusable model by default.
+Protocol selection is explicit:
+
+- If neither protocol is enabled, the device is created without a network adapter. Merely creating the device does not expose it to an OPC UA or Modbus client.
+- Enabling OPC UA creates a real server when the device starts. Unless a template mapping profile overrides it, datapoints use `${deviceId}/${datapoint}` NodeIds and commands use `${deviceId}/${command}` method NodeIds.
+- Enabling Modbus requires mappings. For each exposed datapoint, the Quick Create editor captures the address area, zero-based address, and wire datatype, and applies its defined access/byte-order/word-order defaults. The API and persisted launch definition carry all of those mapping fields explicitly. The console rejects an enabled Modbus port with no mapping instead of treating the port as a configured protocol.
+- Protocol ports must be unique across registered devices, including stopped devices, because the registry reserves the configured launch ports.
+
+This is the quickest path for an experiment. Its launch definition is saved in the SQLite device catalog, while its live datapoint values remain in its in-memory `StateStore`. Use a template when the model itself should be reusable.
 
 ### Create a reusable device model
 
 Use **Templates → New template** when the definition will be reused. Define the logical datapoints and commands first, then add separate OPC UA or Modbus mapping profiles. Save the template and instantiate it with a unique device ID and available ports.
+
+When instantiating a template:
+
+- select the exact mapping profile for each protocol that needs one;
+- Modbus always requires a selected mapping profile;
+- OPC UA may use either a selected profile or the default NodeId rule;
+- the resolved mappings are copied into the device launch definition, so the instantiated device remains restorable even if the source template is later removed.
 
 Prefer templates for team-shared models, repeated tests, or multiple devices of the same type.
 
@@ -197,7 +212,7 @@ For OPC UA:
 
 For Modbus:
 
-1. open the device definition or source YAML;
+1. open the device details, selected template mapping profile, or source YAML;
 2. use the exact address area and register/coil number;
 3. use the configured data type, byte order, and word order;
 4. remember that 32-bit and 64-bit values span multiple 16-bit registers.
@@ -239,7 +254,21 @@ Once the complete flow works:
 4. record the deterministic seed and required duration in the consuming test;
 5. use unique ports when instantiating multiple devices.
 
-Templates, scenario definitions, settings, users, and catalog records are stored in SQLite. Live device state remains in the runtime `StateStore` and has a different lifecycle from catalog data.
+Templates, scenario definitions, settings, users, and device launch records are stored in SQLite. A launch record includes the logical definition, simulation options, enabled adapters, resolved mappings, source-template provenance, and desired lifecycle state. Live datapoint values, active faults, simulation time, and continuously changing runtime state remain in each device's `StateStore` and are not written to SQLite as a live datapoint database.
+
+### Understand restart and desired-state behavior
+
+When the Web service restarts, it loads the configured YAML boot device first and then restores each saved catalog device independently. A malformed device definition, invalid mapping, duplicate ID, or port conflict prevents only that device from being restored; it does not prevent the other devices or the Web service from starting.
+
+The catalog records `Running` or `Stopped` as the desired state when start/stop operations are requested. Restored devices are reconstructed stopped by default. This prevents a service restart from unexpectedly reopening industrial protocol listeners. An administrator may opt in to automatic restart of desired-Running catalog devices with:
+
+```text
+IndustrialSim:Restore:AutoStartDesiredRunning=true
+```
+
+With automatic start enabled, every device is still started independently. If a listener cannot bind, that device remains registered and stopped, its `Running` intent is retained for retry, and other devices continue restoring. Release the conflicting port and start the device again.
+
+Legacy catalog rows that only stored protocol port reservations are restored conservatively without silently enabling a protocol. Edit and save such a device with a complete protocol configuration before expecting an external client to connect.
 
 Template behavior metadata uses JSON such as:
 
@@ -280,6 +309,7 @@ You have completed the recommended first workflow when you can confirm all of th
 - OPC UA or Modbus observes the same logical state as the Web console;
 - Events explain the order of lifecycle, scenario, and fault operations;
 - reusable devices and scenarios are saved as templates or catalog items.
+- a Web-created protocol device can still be found after a service restart, and its protocol is only auto-started when the deployment explicitly enables that policy.
 
 For startup, deployment, environment variables, ports, authentication mode, database location, or service-level troubleshooting, return to the [Service Startup Guide](STARTUP_GUIDE.md).
 

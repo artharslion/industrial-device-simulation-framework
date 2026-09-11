@@ -63,7 +63,7 @@ public sealed class YamlConfigurationLoader
         }
     }
 
-    private static void ValidateMappings(DeviceDefinition definition, IReadOnlyList<ValidatedModbusMapping> mappings)
+    public static void ValidateMappings(DeviceDefinition definition, IReadOnlyList<ValidatedModbusMapping> mappings)
     {
         var points = definition.DataPoints.ToDictionary(point => point.Name, StringComparer.OrdinalIgnoreCase);
         foreach (var mapping in mappings)

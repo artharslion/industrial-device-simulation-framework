@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Net.Http.Json;
 using System.Text.Json;
+using IndustrialSim.Application.Catalogs;
 using IndustrialSim.Core.Domain;
 using IndustrialSim.Hosting;
 using IndustrialSim.Web;
@@ -28,7 +29,15 @@ public sealed class V1ApiContractTests
             deterministic = true,
             seed = 9,
             dataPoints = new[] { new { name = "speed", dataType = "Int32", access = "ReadWrite", initial = 0 } },
-            portBindings = new[] { new { protocol = "modbus", port = FreePort() } }
+            protocols = new
+            {
+                modbus = new
+                {
+                    enabled = true,
+                    port = FreePort(),
+                    mappings = new[] { new { dataPoint = "speed", kind = "holding", address = 100, dataType = "int32", access = "readwrite" } }
+                }
+            }
         });
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
 
@@ -81,6 +90,61 @@ public sealed class V1ApiContractTests
         Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
         using var conflictProblem = JsonDocument.Parse(await conflict.Content.ReadAsStringAsync());
         Assert.Equal("portConflict", conflictProblem.RootElement.GetProperty("errorCode").GetString());
+
+        var missingMappings = await fixture.Client.PostAsJsonAsync("/api/v1/devices", new
+        {
+            id = "missing-mappings", type = "custom",
+            dataPoints = new[] { new { name = "speed", dataType = "Int32", access = "ReadWrite", initial = 0 } },
+            protocols = new { modbus = new { enabled = true, port = FreePort() } }
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, missingMappings.StatusCode);
+        using var mappingProblem = JsonDocument.Parse(await missingMappings.Content.ReadAsStringAsync());
+        Assert.Equal("modbusMappingRequired", mappingProblem.RootElement.GetProperty("errorCode").GetString());
+
+        var unknownProtocol = await fixture.Client.PostAsJsonAsync("/api/v1/devices", new
+        {
+            id = "unknown-protocol", type = "custom",
+            dataPoints = new[] { new { name = "speed", dataType = "Int32", access = "ReadWrite", initial = 0 } },
+            portBindings = new[] { new { protocol = "mqtt", port = FreePort() } }
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, unknownProtocol.StatusCode);
+        using var protocolProblem = JsonDocument.Parse(await unknownProtocol.Content.ReadAsStringAsync());
+        Assert.Equal("unknownProtocol", protocolProblem.RootElement.GetProperty("errorCode").GetString());
+
+        var invalidOpcUa = await fixture.Client.PostAsJsonAsync("/api/v1/devices", new
+        {
+            id = "invalid-opcua", type = "custom",
+            dataPoints = new[] { new { name = "speed", dataType = "Int32", access = "ReadWrite", initial = 0 } },
+            protocols = new { opcua = new { enabled = true, endpoint = "http://localhost:4840" } }
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidOpcUa.StatusCode);
+        using var opcUaProblem = JsonDocument.Parse(await invalidOpcUa.Content.ReadAsStringAsync());
+        Assert.Equal("invalidOpcUaConfiguration", opcUaProblem.RootElement.GetProperty("errorCode").GetString());
+
+        using var occupied = new TcpListener(IPAddress.Any, 0);
+        occupied.Start();
+        var occupiedPort = ((IPEndPoint)occupied.LocalEndpoint).Port;
+        var listenerDevice = await fixture.Client.PostAsJsonAsync("/api/v1/devices", new
+        {
+            id = "listener-conflict", type = "custom",
+            dataPoints = new[] { new { name = "speed", dataType = "Int32", access = "ReadWrite", initial = 0 } },
+            protocols = new
+            {
+                modbus = new
+                {
+                    enabled = true,
+                    port = occupiedPort,
+                    mappings = new[] { new { dataPoint = "speed", kind = "holding", address = 100, dataType = "int32", access = "readwrite" } }
+                }
+            }
+        });
+        Assert.Equal(HttpStatusCode.Created, listenerDevice.StatusCode);
+        var listenerStart = await fixture.Client.PostAsync("/api/v1/devices/listener-conflict/start", null);
+        Assert.Equal(HttpStatusCode.Conflict, listenerStart.StatusCode);
+        using var listenerProblem = JsonDocument.Parse(await listenerStart.Content.ReadAsStringAsync());
+        Assert.Equal("protocolStartFailed", listenerProblem.RootElement.GetProperty("errorCode").GetString());
+        occupied.Stop();
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PostAsync("/api/v1/devices/listener-conflict/start", null)).StatusCode);
     }
 
     [Fact]
@@ -91,6 +155,27 @@ public sealed class V1ApiContractTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("true", response.Headers.GetValues("Deprecation").Single());
         Assert.True(response.Headers.Contains("Sunset"));
+    }
+
+    [Fact]
+    public async Task Batch_start_and_stop_persist_desired_lifecycle_state()
+    {
+        await using var fixture = await V1Fixture.StartAsync();
+        Assert.Equal(HttpStatusCode.Created, (await fixture.Client.PostAsJsonAsync("/api/v1/devices", DeviceRequest("batch-device"))).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PostAsJsonAsync("/api/v1/devices/batch", new
+        {
+            deviceIds = new[] { "batch-device" },
+            operation = "start"
+        })).StatusCode);
+        Assert.Equal("Running", await fixture.DesiredStateAsync("batch-device"));
+
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PostAsJsonAsync("/api/v1/devices/batch", new
+        {
+            deviceIds = new[] { "batch-device" },
+            operation = "stop"
+        })).StatusCode);
+        Assert.Equal("Stopped", await fixture.DesiredStateAsync("batch-device"));
     }
 
     [Fact]
@@ -195,7 +280,15 @@ public sealed class V1ApiContractTests
         deterministic = true,
         seed = 1,
         dataPoints = new[] { new { name = "speed", dataType = "Int32", access = "ReadWrite", initial = 0 } },
-        portBindings = new[] { new { protocol = "modbus", port } }
+        protocols = new
+        {
+            modbus = new
+            {
+                enabled = true,
+                port,
+                mappings = new[] { new { dataPoint = "speed", kind = "holding", address = 100, dataType = "int32", access = "readwrite" } }
+            }
+        }
     };
 
     private static int FreePort()
@@ -208,6 +301,12 @@ public sealed class V1ApiContractTests
     private sealed class V1Fixture(WebApplication app, HttpClient client, string databasePath, SimulationRegistry registry) : IAsyncDisposable
     {
         public HttpClient Client { get; } = client;
+
+        public async Task<string?> DesiredStateAsync(string deviceId)
+        {
+            await using var scope = app.Services.CreateAsyncScope();
+            return (await scope.ServiceProvider.GetRequiredService<IDeviceCatalogRepository>().FindAsync(deviceId))?.DesiredState;
+        }
 
         public static async Task<V1Fixture> StartAsync()
         {

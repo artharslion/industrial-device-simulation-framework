@@ -103,12 +103,25 @@ public sealed class DocumentationContractTests
     }
 
     [Fact]
+    public void Specification_defines_safe_complete_device_launch_and_restore()
+    {
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var specification = File.ReadAllText(Path.Combine(root, "docs", "PROJECT_SPEC.md"));
+
+        Assert.Contains("versioned launch document", specification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("protocol port alone", specification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("implicit register allocation", specification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AutoStartDesiredRunning=false", specification, StringComparison.Ordinal);
+        Assert.Contains("adapter startup failures", specification, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Visual_modeling_wave_has_verified_acceptance_evidence()
     {
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
         var matrix = File.ReadAllText(Path.Combine(root, "docs", "PROTOFORGE_BASELINE_MATRIX.md"));
 
-        Assert.Contains("TemplateCatalogTests`, `TemplatePersistenceTests`, and `VisualModelingApiTests` | Verified", matrix, StringComparison.Ordinal);
+        Assert.Contains("TemplateCatalogTests`, `TemplatePersistenceTests`, `VisualModelingApiTests`, and real-client template-instance access | Verified", matrix, StringComparison.Ordinal);
         Assert.Contains("ScenarioParserTests`, `VisualModelingApiTests`, and Vue editor tests | Verified", matrix, StringComparison.Ordinal);
         Assert.Contains("Vitest, typecheck, production build, and desktop/mobile browser evidence | Verified", matrix, StringComparison.Ordinal);
     }

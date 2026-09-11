@@ -17,11 +17,11 @@ public sealed class DeviceCatalogRepository(IndustrialSimDbContext db) : IDevice
         var entity = await db.Devices.SingleOrDefaultAsync(value => value.Id == item.Id, cancellationToken);
         if (entity is null)
         {
-            await db.Devices.AddAsync(new DeviceCatalogEntity { Id = item.Id, DefinitionJson = item.DefinitionJson, DesiredState = item.DesiredState }, cancellationToken);
+            await db.Devices.AddAsync(new DeviceCatalogEntity { Id = item.Id, DefinitionJson = item.LaunchJson, DesiredState = item.DesiredState }, cancellationToken);
             return;
         }
         EnsureVersion(item.Version, entity.Version, item.Id);
-        entity.DefinitionJson = item.DefinitionJson;
+        entity.DefinitionJson = item.LaunchJson;
         entity.DesiredState = item.DesiredState;
     }
 
@@ -32,6 +32,10 @@ public sealed class DeviceCatalogRepository(IndustrialSimDbContext db) : IDevice
         db.Devices.Remove(entity);
         return true;
     }
+
+    public async Task<bool> SetDesiredStateAsync(string id, string desiredState, CancellationToken cancellationToken = default) =>
+        await db.Devices.Where(item => item.Id == id)
+            .ExecuteUpdateAsync(update => update.SetProperty(item => item.DesiredState, desiredState), cancellationToken) == 1;
 
     private static DeviceCatalogItem Map(DeviceCatalogEntity entity) => new(entity.Id, entity.DefinitionJson, entity.DesiredState, entity.Version);
     private static void EnsureVersion(long requested, long current, string id)

@@ -21,10 +21,22 @@ describe('device editor', () => {
     expect(editor.toRequest()).toMatchObject({
       id: 'sensor-2',
       dataPoints: [{ name: 'temperature', initial: 21.5 }, { name: 'enabled', initial: true }],
-      portBindings: [{ protocol: 'opcua', port: 4841 }],
+      protocols: { opcua: { enabled: true, port: 4841 }, modbus: null },
     })
     editor.removeDataPoint(1)
     expect(editor.form.dataPoints).toHaveLength(1)
+  })
+
+  it('requires explicit Modbus mappings', () => {
+    const editor = useDeviceEditor()
+    editor.form.id = 'modbus-device'
+    editor.form.dataPoints[0]!.name = 'speed'
+    editor.addBinding()
+    editor.form.portBindings[0]!.protocol = 'modbus'
+    editor.form.portBindings[0]!.port = 5021
+    expect(() => editor.toRequest()).toThrow(/explicit mapping/i)
+    editor.addModbusMapping(0)
+    expect(editor.toRequest().protocols?.modbus?.mappings).toHaveLength(1)
   })
 
   it('rejects duplicate datapoints and invalid numeric values', () => {

@@ -1,6 +1,7 @@
 using IndustrialSim.Core.Domain;
 using IndustrialSim.Faults;
 using IndustrialSim.Hosting;
+using IndustrialSim.Configuration.Models;
 
 namespace IndustrialSim.IntegrationTests;
 
@@ -81,7 +82,7 @@ public sealed class SimulationRegistryTests
         var committed = false;
         var replacement = await registry.ReplaceAsync(
             "replaceable",
-            new DeviceLaunchDefinition(Definition("replaceable", includeTemperature: true), new SimulationHostOptions(true, 22), [new ProtocolPortBinding("modbus", 15061)]),
+            Launch("replaceable", 15061, 22, includeTemperature: true),
             _ => { committed = true; return Task.CompletedTask; });
 
         Assert.True(committed);
@@ -109,10 +110,13 @@ public sealed class SimulationRegistryTests
         Assert.Equal("other", other.DeviceId);
     }
 
-    private static DeviceLaunchDefinition Launch(string id, int port, int seed = 1) => new(
-        Definition(id),
+    private static DeviceLaunchDefinition Launch(string id, int port, int seed = 1, bool includeTemperature = false) => new(
+        Definition(id, includeTemperature),
         new SimulationHostOptions(Deterministic: true, Seed: seed),
-        [new ProtocolPortBinding("modbus", port)]);
+        Modbus: new ModbusLaunchDefinition(port,
+        [
+            new ValidatedModbusMapping("speed", 0, 2, "register", "int32", "readwrite", null, null)
+        ]));
 
     private static DeviceDefinition Definition(string id, bool includeTemperature = false) => new(
         new DeviceId(id),

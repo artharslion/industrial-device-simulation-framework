@@ -1,5 +1,6 @@
 using System.Text.Json;
 using IndustrialSim.Application.Catalogs;
+using IndustrialSim.Application.Devices;
 using IndustrialSim.Application.Security;
 using IndustrialSim.Application.Templates;
 using IndustrialSim.Hosting;
@@ -80,6 +81,10 @@ public static class VisualModelingEndpoints
         {
             return IndustrialSimProblemDetails.Result(400, "Invalid template", exception.Message, "templateInvalid");
         }
+        catch (DeviceLaunchException exception)
+        {
+            return IndustrialSimProblemDetails.Result(400, "Invalid device launch", exception.Message, exception.ErrorCode);
+        }
         catch (ArgumentException exception)
         {
             return IndustrialSimProblemDetails.Result(400, "Invalid behavior profile", exception.Message, "invalidBehaviorProfile");
@@ -130,14 +135,47 @@ public static class VisualModelingEndpoints
         DeviceLaunchDefinition launch;
         try
         {
-            launch = new DeviceLaunchDefinition(
-                TemplateCatalog.Instantiate(template, request.DeviceId),
-                new SimulationHostOptions(request.Deterministic, request.Seed),
-                request.PortBindings?.Select(binding => new ProtocolPortBinding(binding.Protocol, binding.Port)).ToArray());
+            var mappings = (await templates.ListMappingsAsync(id, version, cancellationToken))
+                .Select(mapping => JsonSerializer.Deserialize<ProtocolMappingProfile>(mapping.DocumentJson, JsonOptions)!)
+                .ToArray();
+            var selections = new List<TemplateProtocolSelection>();
+            if (request.Protocols?.Opcua is { Enabled: true } opc && !string.IsNullOrWhiteSpace(opc.MappingProfile))
+                selections.Add(new TemplateProtocolSelection("opcua", opc.MappingProfile, opc.Port ?? EndpointPort(opc.Endpoint, 4840)));
+            if (request.Protocols?.Modbus is { Enabled: true } modbus)
+            {
+                if (string.IsNullOrWhiteSpace(modbus.MappingProfile))
+                    throw new DeviceLaunchException("Template Modbus launch requires a selected mapping profile.", "modbusMappingRequired");
+                selections.Add(new TemplateProtocolSelection("modbus", modbus.MappingProfile, modbus.Port));
+            }
+            if (request.PortBindings is { Count: > 0 })
+            {
+                if (request.Protocols is not null) throw new DeviceLaunchException("Use either 'protocols' or deprecated 'portBindings', not both.", "protocolConfigurationAmbiguous");
+                foreach (var binding in request.PortBindings)
+                {
+                    if (binding.Protocol.Equals("modbus", StringComparison.OrdinalIgnoreCase))
+                        throw new DeviceLaunchException("Template Modbus launch requires a selected mapping profile.", "modbusMappingRequired");
+                    if (!binding.Protocol.Equals("opcua", StringComparison.OrdinalIgnoreCase))
+                        throw new DeviceLaunchException($"Protocol '{binding.Protocol}' is not supported.", "unknownProtocol");
+                }
+            }
+            launch = TemplateLaunchComposer.Compose(template, mappings, request.DeviceId, new SimulationHostOptions(request.Deterministic, request.Seed), selections);
+            if (request.Protocols?.Opcua is { Enabled: true } opcUa)
+                launch = launch with
+                {
+                    OpcUa = new OpcUaLaunchDefinition(
+                        opcUa.Endpoint ?? $"opc.tcp://0.0.0.0:{opcUa.Port ?? 4840}",
+                        launch.OpcUa?.DataPointNodeIds)
+                };
+            else if (request.Protocols is null && request.PortBindings?.SingleOrDefault(binding => binding.Protocol.Equals("opcua", StringComparison.OrdinalIgnoreCase)) is { } legacyOpcUa)
+                launch = launch with { OpcUa = new OpcUaLaunchDefinition($"opc.tcp://0.0.0.0:{legacyOpcUa.Port}") };
         }
         catch (TemplateValidationException exception)
         {
             return IndustrialSimProblemDetails.Result(400, "Invalid template", exception.Message, "templateInvalid");
+        }
+        catch (DeviceLaunchException exception)
+        {
+            return IndustrialSimProblemDetails.Result(400, "Invalid device launch", exception.Message, exception.ErrorCode);
         }
         catch (ArgumentException exception)
         {
@@ -149,17 +187,7 @@ public static class VisualModelingEndpoints
         {
             await devices.UpsertAsync(new DeviceCatalogItem(
                 request.DeviceId,
-                JsonSerializer.Serialize(new
-                {
-                    id = request.DeviceId,
-                    type = template.DeviceType,
-                    templateId = template.Id,
-                    templateVersion = template.Version,
-                    deterministic = request.Deterministic,
-                    seed = request.Seed,
-                    dataPoints = template.DataPoints,
-                    portBindings = request.PortBindings
-                }, JsonOptions),
+                DeviceLaunchDocumentSerializer.Serialize(launch),
                 "Stopped",
                 0), cancellationToken);
             await db.CommitAsync(cancellationToken);
@@ -177,6 +205,9 @@ public static class VisualModelingEndpoints
             deviceType = template.DeviceType
         });
     }
+
+    private static int EndpointPort(string? endpoint, int fallback) =>
+        Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && uri.Port > 0 ? uri.Port : fallback;
 
     private static async Task<IResult> ExportScenarioAsync(
         string scenarioId,

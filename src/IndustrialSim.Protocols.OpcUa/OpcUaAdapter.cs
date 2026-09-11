@@ -10,6 +10,7 @@ public sealed class OpcUaAdapter : IProtocolAdapter
     private IDeviceRuntime? _runtime;
     private ApplicationInstance? _application;
     private readonly OpcUaTransportFaultController _transportFault = new();
+    private IReadOnlyDictionary<string, string> _dataPointNodeIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     public string Name => "opcua";
     public bool IsRunning { get; private set; }
     public bool IsDisconnected { get; private set; }
@@ -18,7 +19,13 @@ public sealed class OpcUaAdapter : IProtocolAdapter
     public int Port { get; private set; }
     public bool IsStandardOpcUaServer => _application?.Server is IndustrialOpcUaServer && IsRunning;
     public event Action<DataPointChanged>? DataPointChanged;
-    public IReadOnlyCollection<string> Nodes => _runtime is null ? [] : _runtime.Definition.DataPoints.Select(p => $"{_runtime.Definition.Id.Value}/{p.Name}").Concat(_runtime.Definition.Commands.Select(c => $"{_runtime.Definition.Id.Value}/{c.Name}")).ToArray();
+    public IReadOnlyCollection<string> Nodes => _runtime is null ? [] : _runtime.Definition.DataPoints.Select(p => NodeIdFor(p.Name)).Concat(_runtime.Definition.Commands.Select(c => $"{_runtime.Definition.Id.Value}/{c.Name}")).ToArray();
+    public void Configure(IReadOnlyDictionary<string, string>? dataPointNodeIds)
+    {
+        _dataPointNodeIds = dataPointNodeIds is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(dataPointNodeIds, StringComparer.OrdinalIgnoreCase);
+    }
     public void ApplyTransportFault(string fault, TimeSpan duration)
     {
         _transportFault.Apply(fault, duration);
@@ -58,12 +65,14 @@ public sealed class OpcUaAdapter : IProtocolAdapter
             ServerConfiguration = new ServerConfiguration { BaseAddresses = new StringCollection { Endpoint }, SecurityPolicies = new ServerSecurityPolicyCollection { new ServerSecurityPolicy { SecurityMode = MessageSecurityMode.None, SecurityPolicyUri = SecurityPolicies.None } } },
             SecurityConfiguration = new SecurityConfiguration { ApplicationCertificate = new CertificateIdentifier { StoreType = "Directory", StorePath = certificatePath, SubjectName = "CN=IndustrialSim" }, TrustedIssuerCertificates = new CertificateTrustList { StoreType = "Directory", StorePath = trustPath }, TrustedPeerCertificates = new CertificateTrustList { StoreType = "Directory", StorePath = trustPath }, RejectedCertificateStore = new CertificateTrustList { StoreType = "Directory", StorePath = trustPath }, AutoAcceptUntrustedCertificates = true }, TransportQuotas = new TransportQuotas(), TraceConfiguration = new TraceConfiguration() };
         await config.ValidateAsync(ApplicationType.Server, cancellationToken); _application = new ApplicationInstance(config, null!);
-        await _application.CheckApplicationInstanceCertificatesAsync(true, 2048, cancellationToken); await _application.StartAsync(new IndustrialOpcUaServer(_runtime!, _transportFault));
+        await _application.CheckApplicationInstanceCertificatesAsync(true, 2048, cancellationToken); await _application.StartAsync(new IndustrialOpcUaServer(_runtime!, _transportFault, _dataPointNodeIds));
     }
-    public object? Read(string node) { EnsureTransport(); Ensure(); if (Latency > TimeSpan.Zero) Thread.Sleep(Latency); return _runtime!.Read(NodeName(node))?.Value; }
-    public void Write(string node, object? value) { EnsureTransport(); Ensure(); var result = _runtime!.Write(NodeName(node), value); if (!result.Succeeded) throw new InvalidOperationException(result.Error); }
+    public object? Read(string node) { EnsureTransport(); Ensure(); if (Latency > TimeSpan.Zero) Thread.Sleep(Latency); return _runtime!.Read(DataPointName(node))?.Value; }
+    public void Write(string node, object? value) { EnsureTransport(); Ensure(); var result = _runtime!.Write(DataPointName(node), value); if (!result.Succeeded) throw new InvalidOperationException(result.Error); }
     public Task InvokeMethodAsync(string method, CancellationToken cancellationToken = default) { EnsureTransport(); Ensure(); return _runtime!.InvokeCommandAsync(NodeName(method), cancellationToken); }
     private static string NodeName(string node) => node[(node.LastIndexOf('/') + 1)..];
+    private string DataPointName(string node) => _dataPointNodeIds.FirstOrDefault(pair => pair.Value.Equals(node, StringComparison.Ordinal)).Key ?? NodeName(node);
+    private string NodeIdFor(string dataPoint) => _dataPointNodeIds.TryGetValue(dataPoint, out var nodeId) ? nodeId : $"{_runtime!.Definition.Id.Value}/{dataPoint}";
     private void Ensure() { if (!IsRunning || _runtime is null) throw new InvalidOperationException("OPC UA adapter is not running."); }
     private void EnsureTransport() { if (IsDisconnected) throw new IOException("OPC UA transport disconnected."); }
     private void OnDataPointChanged(DataPointChanged change) => DataPointChanged?.Invoke(change);

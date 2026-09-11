@@ -1,6 +1,7 @@
 using IndustrialSim.Hosting;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using System.Net.Sockets;
 
 namespace IndustrialSim.Web;
 
@@ -21,6 +22,8 @@ public static class IndustrialSimProblemDetails
             {
                 SimulationConflictException conflict => (StatusCodes.Status409Conflict, "Simulation conflict", conflict.ErrorCode),
                 SimulationNotFoundException notFound => (StatusCodes.Status404NotFound, "Simulation not found", notFound.ErrorCode),
+                DeviceLaunchException launch => (StatusCodes.Status400BadRequest, "Invalid device launch", launch.ErrorCode),
+                SocketException => (StatusCodes.Status409Conflict, "Protocol start failed", "protocolStartFailed"),
                 DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Persistence conflict", "persistenceConflict"),
                 DbUpdateException => (StatusCodes.Status503ServiceUnavailable, "Persistence unavailable", "persistenceUnavailable"),
                 ArgumentException => (StatusCodes.Status400BadRequest, "Validation failed", "validationFailed"),

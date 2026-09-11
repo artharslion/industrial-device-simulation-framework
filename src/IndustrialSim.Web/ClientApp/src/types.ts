@@ -80,8 +80,24 @@ export interface DeviceCreateRequest {
   commands?: string[]
   events?: string[]
   behavior?: { profile: string; parameters: Record<string, number> } | null
+  protocols?: DeviceProtocolsRequest | null
   portBindings: Array<{ protocol: string; port: number }>
   version?: number
+}
+
+export interface ModbusMappingRequest {
+  dataPoint: string
+  kind: string
+  address: number
+  dataType?: string | null
+  access?: string | null
+  byteOrder?: string | null
+  wordOrder?: string | null
+}
+
+export interface DeviceProtocolsRequest {
+  opcua?: { enabled: boolean; endpoint?: string | null; port?: number | null; mappingProfile?: string | null } | null
+  modbus?: { enabled: boolean; port: number; mappings?: ModbusMappingRequest[] | null; mappingProfile?: string | null } | null
 }
 
 export interface DeviceBehaviorParameter {

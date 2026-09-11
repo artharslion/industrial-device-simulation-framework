@@ -1,5 +1,6 @@
 using System.Text.Json;
 using IndustrialSim.Application.Catalogs;
+using IndustrialSim.Application.Devices;
 using IndustrialSim.Application.Security;
 using IndustrialSim.Core.Domain;
 using IndustrialSim.Devices;
@@ -108,20 +109,17 @@ public static class V1Endpoints
     {
         if (string.IsNullOrWhiteSpace(request.Id) || string.IsNullOrWhiteSpace(request.Type) || request.DataPoints.Count == 0)
             return IndustrialSimProblemDetails.Result(400, "Validation failed", "Device id, type, and at least one data point are required.", "invalidDevice");
-        var definition = ToDefinition(request);
+        var definition = DeviceLaunchRequestMapper.ToDefinition(request);
         if (definition.Behavior is not null)
         {
             try { BuiltInDeviceProfiles.Validate(definition, definition.Behavior); }
             catch (ArgumentException exception) { return IndustrialSimProblemDetails.Result(400, "Invalid behavior profile", exception.Message, "invalidBehaviorProfile"); }
         }
-        var launch = new DeviceLaunchDefinition(
-            definition,
-            new SimulationHostOptions(request.Deterministic, request.Seed),
-            request.PortBindings?.Select(binding => new ProtocolPortBinding(binding.Protocol, binding.Port)).ToArray());
+        var launch = DeviceLaunchRequestMapper.ToLaunch(request);
         var handle = await registry.CreateAsync(launch, cancellationToken);
         try
         {
-            await repository.UpsertAsync(new DeviceCatalogItem(request.Id, JsonSerializer.Serialize(request), "Stopped", 0), cancellationToken);
+            await repository.UpsertAsync(new DeviceCatalogItem(request.Id, DeviceLaunchDocumentSerializer.Serialize(launch), "Stopped", 0), cancellationToken);
             await db.CommitAsync(cancellationToken);
         }
         catch
@@ -167,7 +165,31 @@ public static class V1Endpoints
                 behavior = handle.Host.Behavior is { } behavior
                     ? new { profile = behavior.Profile, parameters = behavior.Parameters }
                     : null,
-                portBindings = handle.PortBindings.Select(binding => new { protocol = binding.Protocol, port = binding.Port })
+                portBindings = handle.PortBindings.Select(binding => new { protocol = binding.Protocol, port = binding.Port }),
+                protocols = new
+                {
+                    opcua = handle.Host.LaunchDefinition.OpcUa is { } opcUa
+                        ? new { enabled = true, endpoint = opcUa.Endpoint, port = (int?)null, mappingProfile = (string?)null }
+                        : null,
+                    modbus = handle.Host.LaunchDefinition.Modbus is { } modbus
+                        ? new
+                        {
+                            enabled = true,
+                            port = modbus.Port,
+                            mappingProfile = (string?)null,
+                            mappings = modbus.Mappings.Select(mapping => new
+                            {
+                                dataPoint = mapping.Name,
+                                kind = mapping.Kind,
+                                mapping.Address,
+                                dataType = mapping.DataType,
+                                mapping.Access,
+                                mapping.ByteOrder,
+                                mapping.WordOrder
+                            })
+                        }
+                        : null
+                }
             },
             protocols = handle.Host.Protocols.Select(protocol => new { name = protocol.Key, running = protocol.Value.IsRunning }),
             scenarios = new { active = handle.Host.ActiveScenarioName, running = handle.Host.ScenarioRunner?.IsRunning == true, available = await scenarios.ListAsync(cancellationToken) },
@@ -191,14 +213,14 @@ public static class V1Endpoints
         if (request.DataPoints.Count == 0)
             return IndustrialSimProblemDetails.Result(400, "Validation failed", "At least one data point is required.", "invalidDevice");
 
-        var definition = ToDefinition(request);
+        var definition = DeviceLaunchRequestMapper.ToDefinition(request);
         if (definition.Behavior is not null)
         {
             try { BuiltInDeviceProfiles.Validate(definition, definition.Behavior); }
             catch (ArgumentException exception) { return IndustrialSimProblemDetails.Result(400, "Invalid behavior profile", exception.Message, "invalidBehaviorProfile"); }
         }
-        var launch = new DeviceLaunchDefinition(definition, new SimulationHostOptions(request.Deterministic, request.Seed), request.PortBindings?.Select(binding => new ProtocolPortBinding(binding.Protocol, binding.Port)).ToArray());
-        var item = new DeviceCatalogItem(request.Id, JsonSerializer.Serialize(request), "Stopped", request.Version);
+        var launch = DeviceLaunchRequestMapper.ToLaunch(request);
+        var item = new DeviceCatalogItem(request.Id, DeviceLaunchDocumentSerializer.Serialize(launch), "Stopped", request.Version);
         var handle = await registry.ReplaceAsync(deviceId, launch, async token =>
         {
             await repository.UpsertAsync(item, token);
@@ -223,8 +245,19 @@ public static class V1Endpoints
         return Results.NoContent();
     }
 
-    private static async Task<IResult> RunLifecycleAsync(string deviceId, string operation, ISimulationRegistry registry, CancellationToken cancellationToken)
+    private static async Task<IResult> RunLifecycleAsync(
+        string deviceId,
+        string operation,
+        ISimulationRegistry registry,
+        IDeviceCatalogRepository repository,
+        IndustrialSimDbContext db,
+        CancellationToken cancellationToken)
     {
+        if (operation.Equals("start", StringComparison.OrdinalIgnoreCase) || operation.Equals("stop", StringComparison.OrdinalIgnoreCase))
+        {
+            var desired = operation.Equals("start", StringComparison.OrdinalIgnoreCase) ? "Running" : "Stopped";
+            await repository.SetDesiredStateAsync(deviceId, desired, cancellationToken);
+        }
         switch (operation.ToLowerInvariant())
         {
             case "start": await registry.StartAsync(deviceId, cancellationToken); break;
@@ -239,6 +272,7 @@ public static class V1Endpoints
     private static async Task<IResult> RunBatchAsync(
         BatchLifecycleRequest request,
         ISimulationRegistry registry,
+        IDeviceCatalogRepository repository,
         ClaimsPrincipal user,
         IAuthorizationService authorization,
         CancellationToken cancellationToken)
@@ -246,7 +280,14 @@ public static class V1Endpoints
         if (request.Operation.Equals("remove", StringComparison.OrdinalIgnoreCase) &&
             !(await authorization.AuthorizeAsync(user, IndustrialPolicies.Admin)).Succeeded)
             return IndustrialSimProblemDetails.Result(403, "Forbidden", "Batch removal requires the Admin role.", "adminRoleRequired");
-        var result = request.Operation.ToLowerInvariant() switch
+        var operation = request.Operation.ToLowerInvariant();
+        if (operation is "start" or "stop")
+        {
+            var desiredState = operation == "start" ? "Running" : "Stopped";
+            foreach (var deviceId in request.DeviceIds.Distinct(StringComparer.OrdinalIgnoreCase))
+                await repository.SetDesiredStateAsync(deviceId, desiredState, cancellationToken);
+        }
+        var result = operation switch
         {
             "start" => await registry.StartManyAsync(request.DeviceIds, cancellationToken),
             "stop" => await registry.StopManyAsync(request.DeviceIds, cancellationToken),

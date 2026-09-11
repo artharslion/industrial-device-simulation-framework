@@ -3,13 +3,6 @@ using IndustrialSim.Core.Domain;
 
 namespace IndustrialSim.Hosting;
 
-public sealed record ProtocolPortBinding(string Protocol, int Port);
-
-public sealed record DeviceLaunchDefinition(
-    DeviceDefinition Definition,
-    SimulationHostOptions? Options = null,
-    IReadOnlyList<ProtocolPortBinding>? PortBindings = null);
-
 public sealed record SimulationSummary(
     string DeviceId,
     string DeviceType,
@@ -94,7 +87,7 @@ public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
                         $"Port {binding.Port} for protocol '{binding.Protocol}' is already reserved by simulation '{owner}'.",
                         "portConflict");
 
-            var host = SimulationHost.Create(definition.Definition, definition.Options);
+            var host = SimulationHost.Create(definition);
             var handle = new SimulationHandle(host, bindings);
             if (!_simulations.TryAdd(deviceId, handle))
             {
@@ -119,7 +112,7 @@ public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(host);
         var deviceId = host.Runtime.Definition.Id.Value;
-        var bindings = NormalizeBindings(portBindings);
+        var bindings = NormalizeBindings(portBindings ?? host.PortBindings);
         await _catalogGate.WaitAsync(cancellationToken);
         try
         {
@@ -154,7 +147,7 @@ public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
             throw new ArgumentException("Replacement definition id must match the target device id.", nameof(definition));
 
         var bindings = NormalizeBindings(definition.PortBindings);
-        var candidateHost = SimulationHost.Create(definition.Definition, definition.Options);
+        var candidateHost = SimulationHost.Create(definition);
         var candidate = new SimulationHandle(candidateHost, bindings);
         var committed = false;
 

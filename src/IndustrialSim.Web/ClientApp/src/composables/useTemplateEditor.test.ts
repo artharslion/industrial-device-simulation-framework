@@ -17,7 +17,7 @@ describe('visual template editor', () => {
 
     expect(editor.validate()).toEqual([])
     await editor.save()
-    await editor.instantiate({ deviceId: 'pump-7', deterministic: true, seed: 7, portBindings: [] })
+    await editor.instantiate({ deviceId: 'pump-7', deterministic: true, seed: 7, protocols: {} })
 
     expect(api.createTemplate).toHaveBeenCalledWith(editor.draft)
     expect(api.instantiateTemplate).toHaveBeenCalledWith('pump', '1.0.0', expect.objectContaining({ deviceId: 'pump-7' }))

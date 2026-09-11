@@ -1,4 +1,6 @@
 using IndustrialSim.Application.Catalogs;
+using IndustrialSim.Application.Devices;
+using IndustrialSim.Application.Abstractions;
 using IndustrialSim.Application.Security;
 using IndustrialSim.Application.Templates;
 using IndustrialSim.Hosting;
@@ -29,6 +31,8 @@ public static class ControlPlaneServices
         services.AddScoped<ISettingCatalogRepository, SettingCatalogRepository>();
         services.AddScoped<ISnapshotCatalogRepository, SnapshotCatalogRepository>();
         services.AddScoped<ITemplateCatalogRepository, TemplateCatalogRepository>();
+        services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<IndustrialSimDbContext>());
+        services.AddScoped<DeviceCatalogRestoreService>();
         services.AddSingleton(provider =>
         {
             var broker = new RuntimeStreamBroker();

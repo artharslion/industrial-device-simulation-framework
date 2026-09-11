@@ -73,7 +73,7 @@ export function useTemplateEditor(api: TemplateEditorApi) {
     try { await api.createTemplate(draft) } finally { saving.value = false }
   }
 
-  async function instantiate(value: { deviceId: string; deterministic: boolean; seed: number; portBindings: Array<{ protocol: string; port: number }> }) {
+  async function instantiate(value: { deviceId: string; deterministic: boolean; seed: number; protocols?: unknown }) {
     if (!draft.template.id || !draft.template.version) throw new Error('Save or select a template version before instantiation.')
     await api.instantiateTemplate(draft.template.id, draft.template.version, value)
   }
