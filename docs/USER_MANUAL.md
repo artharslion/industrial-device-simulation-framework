@@ -26,8 +26,11 @@ Before changing anything, confirm:
 
 - the device ID and type are correct;
 - its runtime mode is Real time or Deterministic as expected;
+- its seed and simulation clock are visible in the device summary;
 - OPC UA and Modbus appear under the device protocol information;
 - there is no unexpected active fault.
+
+Use the **Theme** selector in the workspace header to choose **System**, **Light**, or **Dark**. The selection applies to the runtime event stream, device details, templates, protocol mapping profiles, and the Scenario flow/YAML workspace.
 
 If authentication is enabled and the console asks for credentials, open **Users**, bootstrap the first administrator if no user exists, and sign in. With authentication disabled, the console uses the effective `local-developer` Admin identity.
 
@@ -41,10 +44,16 @@ After the walkthrough, choose one of these creation paths:
 
 Use **Devices → New device** when you need a temporary runtime device. Enter:
 
-1. a unique device ID and device type;
-2. deterministic mode and seed if reproducibility matters;
-3. at least one typed datapoint;
-4. optional, unique OPC UA or Modbus ports.
+1. a unique device ID;
+2. a Device Profile: **Pump**, **Motor**, **Sensor**, or **Custom**;
+3. deterministic mode and seed if reproducibility matters;
+4. behavior parameters and initial values when a built-in profile is selected;
+5. logical datapoints for a Custom device;
+6. optional, unique OPC UA or Modbus ports.
+
+Pump, Motor, and Sensor profiles show their behavior summary, commands, events, required datapoints, and parameter defaults before creation. Their required datapoint names, types, and access modes are locked because the runtime behavior depends on that contract; initial values and descriptions remain editable.
+
+Custom creates an explicit `none` behavior profile. It has no periodic built-in behavior: its state changes only through permitted writes, scenarios, commands, faults, or other explicit runtime operations.
 
 This is the quickest path for an experiment. The device is an active in-memory simulation and should not be treated as a reusable model by default.
 
@@ -65,6 +74,10 @@ Open the device details page and use **Start**. Then inspect these tabs in order
 
 For `pump-001`, observe values such as temperature, pressure, speed, running, and alarm.
 
+The Pump profile has a periodic behavior loop. While running, it moves speed toward `ratedSpeed`, derives pressure from speed, increases temperature by `heatingRatePerSecond`, and raises an alarm at `overheatTemperature`. While stopped, it cools by `coolingRatePerSecond`. Motor has a similar speed/current/temperature loop, while Sensor increases its value by `ratePerSecond` while quality is `Good`.
+
+This means a Pump temperature changing after `start` is expected behavior, even if a scenario only mentions `speed`. Inspect **Default behavior** on the device details page to see the effective profile and parameter values.
+
 Only write a datapoint when its access mode permits it. Use **Pause** when you want to inspect a stable runtime, **Resume** to continue, **Stop** to stop it, and **Reset** to return it to its initial runtime state.
 
 If the device is deterministic, use **Tick** to advance simulation time explicitly. This is useful when a test must reach an exact simulation time without waiting for wall-clock time.
@@ -77,9 +90,9 @@ Open **Scenarios** and import:
 examples/scenarios/startup.yaml
 ```
 
-Review the generated flow before running it. The scenario performs two logical operations:
+Review the generated flow before running it. The scenario declares `target.type: pump`, so it can be run on any compatible Pump selected at run time. It performs two logical operations:
 
-1. invokes the `start` command on `pump-001` at simulation time `0s`;
+1. invokes the `start` command on the selected Pump at simulation time `0s`;
 2. ramps `speed` from `0` to `1450` over 10 seconds after a one-second delay.
 
 Select `pump-001` and choose **Run on selected device**. Return to the device details page and observe:
@@ -91,7 +104,9 @@ Select `pump-001` and choose **Run on selected device**. Return to the device de
 
 For a deterministic device, advance at least 12 seconds with Tick if the scenario has not reached its final state.
 
-A scenario always targets logical device IDs, datapoints, and commands. It must never depend directly on a Modbus register or OPC UA node address.
+A reusable scenario targets a logical device type, datapoints, and commands. The selected run target supplies the concrete device ID. It must never depend directly on a Modbus register or OPC UA node address.
+
+Legacy YAML that puts `device: pump-001` in every action is still accepted, but it is bound to that exact device. Prefer `scenario.target.type` for new single-device scenarios.
 
 ## Step 5: Create a scenario for your own test case
 
@@ -99,26 +114,36 @@ Once the startup example works, create a new scenario in **Scenarios**.
 
 Build the flow in this order:
 
-1. identify the state or command that establishes the starting condition;
-2. add `set`, `ramp`, or `command` actions;
-3. add explicit `at`, `after`, `every`, or `when` triggers;
-4. add `wait` only when later actions must be delayed;
-5. add a fault after the normal behavior is proven;
-6. save the scenario, then run it on a selected device.
+1. choose a reference device; the editor derives the reusable target type and available capabilities from it;
+2. identify the state or command that establishes the starting condition;
+3. add `set`, `ramp`, or `command` actions;
+4. add explicit `at`, `after`, `every`, or `when` triggers;
+5. add `wait` only when later actions must be delayed;
+6. add a fault after the normal behavior is proven;
+7. save the scenario, then choose a compatible run target.
+
+The visual editor constrains fields using the reference device:
+
+- time fields use a numeric amount and unit instead of requiring text such as `1s`;
+- datapoints are selected from the device definition;
+- `ramp` only offers numeric datapoints;
+- Boolean values use `true`/`false`, numeric values use number inputs, and strings remain text;
+- commands are selected from the device's command contract;
+- the run target list only shows devices matching the reusable target type.
 
 Every YAML step requires exactly one trigger and one action. A typical scenario looks like:
 
 ```yaml
 scenario:
   name: startup-and-overheat
+  target:
+    type: pump
   steps:
     - at: 0s
       command:
-        device: pump-001
         name: start
     - after: 1s
       ramp:
-        device: pump-001
         datapoint: speed
         from: 0
         to: 1450
@@ -126,10 +151,11 @@ scenario:
     - after: 30s
       fault:
         type: overheat
-        device: pump-001
 ```
 
-Use `s`, `m`, `h`, or a .NET `TimeSpan` value for durations. Prefer explicit values such as `10s`, `2m`, or `00:00:10`.
+Exported YAML uses `ms`, `s`, `m`, `h`, or a .NET `TimeSpan` value for durations. The form generates values such as `500ms`, `10s`, or `2m`; imported YAML may also use `00:00:10`.
+
+Scenario actions and built-in behavior operate on the same `StateStore`. A scenario can intentionally write a datapoint also calculated by the selected profile, such as Pump `speed`; the behavior loop may update it again on later ticks. Use Custom/`none` when the test requires full scenario ownership of state, or configure the profile so its behavior matches the test.
 
 ## Step 6: Inject a fault and verify recovery
 
@@ -208,12 +234,26 @@ When a test fails, check these questions in sequence:
 Once the complete flow works:
 
 1. save or export the scenario from **Scenarios**;
-2. create a template for any device definition that will be reused;
+2. create a template for any device definition that will be reused, including its behavior metadata when required;
 3. keep protocol mappings separate from logical datapoints and commands;
 4. record the deterministic seed and required duration in the consuming test;
 5. use unique ports when instantiating multiple devices.
 
 Templates, scenario definitions, settings, users, and catalog records are stored in SQLite. Live device state remains in the runtime `StateStore` and has a different lifecycle from catalog data.
+
+Template behavior metadata uses JSON such as:
+
+```json
+{
+  "profile": "pump",
+  "parameters": {
+    "ratedSpeed": 1450,
+    "accelerationSeconds": 10
+  }
+}
+```
+
+Supported profiles are `pump`, `motor`, `sensor`, and `none`. Invalid profile/type/schema/command combinations are rejected before the device is registered.
 
 ## Step 10: Add users only when the workflow is stable
 
@@ -232,7 +272,9 @@ Start with the lowest role that can complete the task. Keep authentication-disab
 You have completed the recommended first workflow when you can confirm all of the following:
 
 - `pump-001` starts and its state is visible;
+- the effective behavior profile and parameters explain automatic state changes;
 - the startup scenario changes running state and speed;
+- a reusable scenario can run on another compatible device without editing its steps;
 - an overheat or network fault activates at the expected simulation time;
 - a configured fault recovers when its duration ends;
 - OPC UA or Modbus observes the same logical state as the Web console;

@@ -26,8 +26,11 @@
 
 - 设备 ID 和设备类型正确；
 - 运行模式符合预期，是 Real time 或 Deterministic；
+- 设备摘要中可以看到随机种子和仿真时钟；
 - 设备协议信息中可以看到 OPC UA 和 Modbus；
 - 当前没有非预期的活动故障。
+
+可以通过工作区顶部的 **Theme** 选择 **System**、**Light** 或 **Dark**。主题会统一应用到 Runtime Event Stream、设备详情、模板、Protocol Mapping Profiles，以及 Scenario 的 Flow/YAML 工作区。
 
 如果系统启用了身份认证并要求登录，请打开 **Users**。如果还没有用户，先初始化第一个管理员，然后登录。身份认证关闭时，控制台使用等效的 `local-developer` Admin 身份。
 
@@ -41,10 +44,16 @@
 
 需要临时运行时设备时，使用 **Devices → New device**，依次填写：
 
-1. 唯一的设备 ID 和设备类型；
-2. 如果需要可重复结果，启用确定性模式并指定随机种子；
-3. 至少添加一个带类型的数据点；
-4. 按需添加不冲突的 OPC UA 或 Modbus 端口。
+1. 唯一的设备 ID；
+2. Device Profile：**Pump**、**Motor**、**Sensor** 或 **Custom**；
+3. 如果需要可重复结果，启用确定性模式并指定随机种子；
+4. 选择内置 profile 时，配置行为参数和数据点初始值；
+5. 选择 Custom 时，自行定义逻辑数据点；
+6. 按需添加不冲突的 OPC UA 或 Modbus 端口。
+
+Pump、Motor 和 Sensor 会在创建前显示行为摘要、命令、事件、必需数据点和参数默认值。因为运行时行为依赖这套契约，所以必需数据点的名称、类型和访问模式会被锁定；初始值和描述仍然可以修改。
+
+Custom 会显式创建 `none` 行为 profile，不包含周期性的内置行为。它的状态只会通过允许的写入、场景、命令、故障或其他显式运行时操作发生变化。
 
 这种方式适合快速实验。创建结果是活动的内存仿真，不应该默认将其视为可复用模型。
 
@@ -65,6 +74,10 @@
 
 对于 `pump-001`，重点观察 temperature、pressure、speed、running 和 alarm。
 
+Pump profile 包含周期性行为循环。运行时，它会让 speed 向 `ratedSpeed` 变化、根据 speed 计算 pressure、按照 `heatingRatePerSecond` 提高 temperature，并在达到 `overheatTemperature` 时触发 alarm；停止时按照 `coolingRatePerSecond` 降温。Motor 包含类似的转速、电流和温度行为，Sensor 则会在 quality 为 `Good` 时按照 `ratePerSecond` 增加 value。
+
+因此，执行 `start` 后 Pump 的 temperature 持续变化是预期行为，即使场景只配置了 `speed`。可以在设备详情页的 **Default behavior** 中查看实际生效的 profile 和参数。
+
 只有访问模式允许时才能写入数据点。需要观察稳定状态时使用 **Pause**，继续运行时使用 **Resume**，结束运行时使用 **Stop**，恢复初始运行状态时使用 **Reset**。
 
 如果设备使用确定性模式，可以通过 **Tick** 显式推进仿真时间。这适合需要在不等待真实时间的情况下，到达精确仿真时刻的测试。
@@ -77,9 +90,9 @@
 examples/scenarios/startup.yaml
 ```
 
-运行前先查看生成的流程。该场景会执行两个逻辑操作：
+运行前先查看生成的流程。该场景声明了 `target.type: pump`，因此可以在运行时选择任意兼容的 Pump。场景会执行两个逻辑操作：
 
-1. 在仿真时间 `0s` 调用 `pump-001` 的 `start` 命令；
+1. 在仿真时间 `0s` 调用所选 Pump 的 `start` 命令；
 2. 延迟一秒后，在 10 秒内将 `speed` 从 `0` 提升到 `1450`。
 
 选择 `pump-001`，然后执行 **Run on selected device**。返回设备详情页，观察：
@@ -91,7 +104,9 @@ examples/scenarios/startup.yaml
 
 如果是确定性设备，并且场景还没有到达最终状态，请通过 Tick 至少推进 12 秒。
 
-场景只能操作逻辑设备 ID、数据点和命令，不能直接依赖 Modbus 寄存器或 OPC UA 节点地址。
+可复用场景只描述逻辑设备类型、数据点和命令，实际设备 ID 由运行时选择的目标提供。场景不能直接依赖 Modbus 寄存器或 OPC UA 节点地址。
+
+为了兼容旧配置，仍然支持在每个动作中填写 `device: pump-001`，但这种场景会绑定到该设备。新的单设备场景应优先使用 `scenario.target.type`。
 
 ## 第五步：为自己的测试创建场景
 
@@ -99,26 +114,36 @@ examples/scenarios/startup.yaml
 
 推荐按照以下顺序构建流程：
 
-1. 确定用于建立初始条件的状态或命令；
-2. 添加 `set`、`ramp` 或 `command` 动作；
-3. 为动作添加明确的 `at`、`after`、`every` 或 `when` 触发器；
-4. 只有后续动作确实需要延迟时才添加 `wait`；
-5. 先证明正常行为，再添加故障；
-6. 保存场景，然后在选中的设备上运行。
+1. 选择一个参考设备，编辑器会从中获得可复用目标类型和可用能力；
+2. 确定用于建立初始条件的状态或命令；
+3. 添加 `set`、`ramp` 或 `command` 动作；
+4. 为动作添加明确的 `at`、`after`、`every` 或 `when` 触发器；
+5. 只有后续动作确实需要延迟时才添加 `wait`；
+6. 先证明正常行为，再添加故障；
+7. 保存场景，然后选择一个兼容的运行目标。
+
+可视化编辑器会根据参考设备限制表单：
+
+- 时间使用数值和单位输入，不再要求手动输入 `1s`；
+- 数据点从设备定义中选择；
+- `ramp` 只显示数值类型数据点；
+- Boolean 使用 `true`/`false` 下拉框，数值使用数字输入，String 使用文本输入；
+- command 从设备的命令契约中选择；
+- Run target 只显示与可复用目标类型匹配的设备。
 
 每个 YAML 步骤必须且只能包含一个触发器和一个动作。典型场景如下：
 
 ```yaml
 scenario:
   name: startup-and-overheat
+  target:
+    type: pump
   steps:
     - at: 0s
       command:
-        device: pump-001
         name: start
     - after: 1s
       ramp:
-        device: pump-001
         datapoint: speed
         from: 0
         to: 1450
@@ -126,10 +151,11 @@ scenario:
     - after: 30s
       fault:
         type: overheat
-        device: pump-001
 ```
 
-持续时间可以使用 `s`、`m`、`h` 后缀或 .NET `TimeSpan` 格式。推荐使用 `10s`、`2m` 或 `00:00:10` 等明确值。
+导出的 YAML 持续时间可以使用 `ms`、`s`、`m`、`h` 后缀或 .NET `TimeSpan` 格式。表单会生成 `500ms`、`10s` 或 `2m` 等值；导入 YAML 时也支持 `00:00:10`。
+
+Scenario 动作和内置行为操作同一个 `StateStore`。场景可以写入 profile 也会计算的数据点，例如 Pump 的 `speed`，但内置行为可能在后续 tick 中再次更新它。如果测试需要由场景完全控制状态，应使用 Custom/`none`，或者调整 profile 参数使其行为符合测试目标。
 
 ## 第六步：注入故障并验证恢复
 
@@ -208,12 +234,26 @@ examples/scenarios/overheating.yaml
 完整流程验证成功后：
 
 1. 在 **Scenarios** 中保存或导出场景；
-2. 将需要重复使用的设备定义创建为模板；
+2. 将需要重复使用的设备定义创建为模板，并按需保存 behavior metadata；
 3. 保持协议映射与逻辑数据点、命令相互独立；
 4. 在使用该场景的测试中记录确定性随机种子和所需持续时间；
 5. 实例化多个设备时使用不同端口。
 
 模板、场景定义、设置、用户和目录记录保存在 SQLite 中。实时设备状态保存在运行时 `StateStore` 中，二者具有不同的生命周期。
+
+模板中的 behavior metadata 使用如下 JSON：
+
+```json
+{
+  "profile": "pump",
+  "parameters": {
+    "ratedSpeed": 1450,
+    "accelerationSeconds": 10
+  }
+}
+```
+
+支持的 profile 为 `pump`、`motor`、`sensor` 和 `none`。profile、设备类型、数据点 schema 或命令不兼容时，会在设备注册前返回明确错误。
 
 ## 第十步：流程稳定后再配置用户
 
@@ -232,7 +272,9 @@ examples/scenarios/overheating.yaml
 满足以下条件时，表示已经完成推荐的第一次操作流程：
 
 - `pump-001` 可以启动并显示实时状态；
+- 生效的 behavior profile 和参数可以解释自动状态变化；
 - startup 场景可以改变 running 状态和 speed；
+- 可复用场景无需修改步骤即可在另一台兼容设备上运行；
 - 过热或网络故障在预期仿真时间激活；
 - 配置了持续时间的故障可以自动恢复；
 - OPC UA 或 Modbus 观察到的逻辑状态与 Web 控制台一致；

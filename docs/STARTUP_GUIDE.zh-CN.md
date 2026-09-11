@@ -71,6 +71,8 @@ dotnet run --project src/IndustrialSim.Cli -- validate examples/devices/pump.yam
 
 验证成功会输出 `Configuration valid.`。配置无效时会返回非零退出码和可操作的错误信息。
 
+仓库中的 Pump、Motor 和 Sensor YAML 都会显式声明 `device.behavior.profile`。运行时启动前，验证器会检查 profile 是否与设备类型、必需数据点名称/类型/访问模式、必需命令以及数值参数限制一致。对于只通过显式操作改变状态的自定义设备，请使用 `profile: none`。
+
 ### 4.2 启动 Web 服务
 
 设置启动 YAML 路径并运行主机：
@@ -111,6 +113,8 @@ dotnet run --project src/IndustrialSim.Cli -- scenario run examples/scenarios/st
 ```
 
 如果不提供 `--duration`，CLI 会持续运行直到被取消。确定性持续时间必须足够长，才能到达需要执行的所有计划步骤。
+
+`examples/scenarios/startup.yaml` 声明了 `scenario.target.type: pump`，动作中不再包含具体设备 ID。CLI 会将其绑定到 `--config` 加载的设备；Web 控制台则允许用户选择兼容的运行目标。带有动作级 device ID 的旧场景仍然兼容。
 
 ## 5. 默认端点
 
@@ -196,6 +200,10 @@ Docker Compose 将 `/app/data/industrial-sim.db` 保存在命名卷中。模板�
 ### 协议客户端无法连接
 
 确认对应适配器已经启用、预期端口已经发布，并且当前没有激活 Network Fault。从另一个 Compose 容器连接时，应使用 Compose 服务名而不是 `localhost`。
+
+### 数据点在没有对应场景步骤时仍然变化
+
+检查设备实际生效的 behavior profile。Pump 和 Motor 会在仿真 tick 中更新转速、温度、压力/电流、运行状态和 alarm 等派生状态；Sensor 会在 quality 为 `Good` 时更新 value。如果场景需要完全控制状态，请调整行为参数或使用 `profile: none`。
 
 ### 使用空白 Docker 数据重新启动
 

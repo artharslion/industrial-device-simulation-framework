@@ -11,6 +11,7 @@ public sealed class DocumentationContractTests
         var chineseStartupGuide = File.ReadAllText(Path.Combine(root, "docs", "STARTUP_GUIDE.zh-CN.md"));
         var manual = File.ReadAllText(Path.Combine(root, "docs", "USER_MANUAL.md"));
         var chineseManual = File.ReadAllText(Path.Combine(root, "docs", "USER_MANUAL.zh-CN.md"));
+        var startupScenario = File.ReadAllText(Path.Combine(root, "examples", "scenarios", "startup.yaml"));
 
         Assert.Contains("docs/STARTUP_GUIDE.md", readme, StringComparison.Ordinal);
         Assert.Contains("docs/STARTUP_GUIDE.zh-CN.md", readme, StringComparison.Ordinal);
@@ -39,6 +40,8 @@ public sealed class DocumentationContractTests
             Assert.Contains(step, manual, StringComparison.OrdinalIgnoreCase);
 
         Assert.Contains("openapi/v1.json", manual, StringComparison.Ordinal);
+        Assert.Contains("behavior profile", manual, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("reusable target type", manual, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("## 2. Prerequisites", manual, StringComparison.Ordinal);
         Assert.DoesNotContain("## 3. Start with Docker Compose", manual, StringComparison.Ordinal);
 
@@ -47,7 +50,13 @@ public sealed class DocumentationContractTests
         Assert.Contains("第四步：运行第一个场景", chineseManual, StringComparison.Ordinal);
         Assert.Contains("第六步：注入故障并验证恢复", chineseManual, StringComparison.Ordinal);
         Assert.Contains("第八步：使用事件解释系统行为", chineseManual, StringComparison.Ordinal);
+        Assert.Contains("behavior profile", chineseManual, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("可复用目标类型", chineseManual, StringComparison.Ordinal);
         Assert.DoesNotContain("## 3. 使用 Docker Compose 启动", chineseManual, StringComparison.Ordinal);
+
+        Assert.Contains("target:", startupScenario, StringComparison.Ordinal);
+        Assert.Contains("type: pump", startupScenario, StringComparison.Ordinal);
+        Assert.DoesNotContain("device: pump-001", startupScenario, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -71,6 +71,8 @@ dotnet run --project src/IndustrialSim.Cli -- validate examples/devices/pump.yam
 
 Success prints `Configuration valid.`. Invalid configuration returns a non-zero exit code with an actionable error.
 
+The checked-in Pump, Motor, and Sensor YAML files declare an explicit `device.behavior.profile`. Validation checks that the profile matches the device type, required datapoint names/types/access modes, required commands, and numeric parameter limits before the runtime starts. Use `profile: none` for a custom device that should change only through explicit operations.
+
 ### 4.2 Start the Web service
 
 Set the startup YAML path and run the host:
@@ -111,6 +113,8 @@ dotnet run --project src/IndustrialSim.Cli -- scenario run examples/scenarios/st
 ```
 
 Without `--duration`, the CLI continues until cancelled. A deterministic duration must be long enough to reach every scheduled step you want to execute.
+
+`examples/scenarios/startup.yaml` declares `scenario.target.type: pump` and omits concrete device IDs from its actions. The CLI binds it to the device loaded from `--config`; the Web console lets the operator choose a compatible run target. Legacy scenarios with action-level device IDs remain supported.
 
 ## 5. Endpoints
 
@@ -196,6 +200,10 @@ Run `docker compose ps`, confirm that port `8080` is published, and inspect `doc
 ### A protocol client cannot connect
 
 Confirm that the configured adapter is enabled, the expected port is published, and no Network Fault is active. From another Compose container, use the Compose service name instead of `localhost`.
+
+### A datapoint changes without a scenario step
+
+Inspect the device's effective behavior profile. Pump and Motor update derived speed, temperature, pressure/current, running, and alarm state on simulation ticks; Sensor updates its value while quality is `Good`. Configure the behavior parameters or use `profile: none` when the scenario must have full ownership of state.
 
 ### Start again with an empty Docker database
 

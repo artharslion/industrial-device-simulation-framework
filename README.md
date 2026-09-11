@@ -100,19 +100,21 @@ The scenario targets logical devices, datapoints, commands, and protocols—not 
 ```yaml
 scenario:
   name: pump-startup
+  target:
+    type: pump
   steps:
     - at: 0s
       command:
-        device: pump-001
         name: start
     - after: 1s
       ramp:
-        device: pump-001
         datapoint: speed
         from: 0
         to: 1450
         duration: 10s
 ```
+
+The target type makes this scenario reusable across compatible Pump devices. The concrete device is selected when the scenario runs; legacy action-level `device` fields remain supported.
 
 ## Configuration at a glance
 
@@ -120,6 +122,12 @@ scenario:
 device:
   id: pump-001
   type: pump
+  behavior:
+    profile: pump
+    parameters:
+      ratedSpeed: 1450
+      accelerationSeconds: 10
+      heatingRatePerSecond: 0.5
   datapoints:
     speed:
       type: int32
@@ -143,6 +151,8 @@ web:
   enabled: true
   port: 8080
 ```
+
+Built-in profiles are `pump`, `motor`, and `sensor`. Use `profile: none` for a custom device with no periodic behavior. The Web console exposes the same server-owned profiles, parameter defaults, required datapoints, commands, and events during device creation.
 
 Start with [examples/devices/pump.yaml](examples/devices/pump.yaml), [examples/devices/motor.yaml](examples/devices/motor.yaml), or [examples/devices/sensor.yaml](examples/devices/sensor.yaml).
 
