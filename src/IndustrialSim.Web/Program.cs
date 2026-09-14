@@ -7,6 +7,8 @@ using IndustrialSim.Persistence;
 using IndustrialSim.Observability.Events;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using IndustrialSim.Web.Health;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuredPath = builder.Configuration["IndustrialSim:DeviceConfig"]
@@ -57,6 +59,16 @@ app.MapIndustrialSimApi(simulation, requireAuthorization: true);
 app.MapIndustrialSimIdentity();
 app.MapIndustrialSimV1Api();
 app.MapRuntimeHub();
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("live"),
+    ResponseWriter = HealthResponseWriter.WriteAsync
+}).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("ready"),
+    ResponseWriter = HealthResponseWriter.WriteAsync
+}).AllowAnonymous();
 app.MapOpenApi("/openapi/v1.json");
 app.MapIndustrialSimDeveloperConsole();
 

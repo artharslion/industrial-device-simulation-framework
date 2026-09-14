@@ -14,6 +14,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using IndustrialSim.Web.Health;
 
 namespace IndustrialSim.Web.Api.V1;
 
@@ -43,6 +45,9 @@ public static class ControlPlaneServices
         services.AddSingleton<RuntimeEventLog>();
         services.AddSingleton<IHostedService, RuntimeEventLogLifecycle>();
         services.AddSingleton(provider => new RuntimeStreamBroker(provider.GetRequiredService<RuntimeEventLog>()));
+        services.AddHealthChecks()
+            .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
+            .AddCheck<IndustrialSimReadinessHealthCheck>("control-plane", tags: ["ready"]);
         services.AddSignalR();
         services.AddOpenApi();
         services.AddSingleton(new IndustrialAuthOptions(authMode));
