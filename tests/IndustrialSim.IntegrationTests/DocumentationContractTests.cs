@@ -127,6 +127,21 @@ public sealed class DocumentationContractTests
     }
 
     [Fact]
+    public void Release_evidence_gate_defines_ci_server_integration_and_image_publication()
+    {
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var specification = File.ReadAllText(Path.Combine(root, "docs", "PROJECT_SPEC.md"));
+        var matrix = File.ReadAllText(Path.Combine(root, "docs", "PROTOFORGE_BASELINE_MATRIX.md"));
+        var comparison = File.ReadAllText(Path.Combine(root, "docs", "PROTOFORGE_COMPARISON.md"));
+
+        Assert.Contains("Wave 2.5: public-repository CI", specification, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.AspNetCore.Mvc.Testing", matrix, StringComparison.Ordinal);
+        Assert.Contains("Docker Hub", matrix, StringComparison.Ordinal);
+        Assert.Contains("GitHub Actions", comparison, StringComparison.Ordinal);
+        Assert.Contains("14b4e35", comparison, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Docker_deployment_uses_a_persistent_non_root_writable_sqlite_directory()
     {
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));

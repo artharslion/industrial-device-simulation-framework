@@ -2071,6 +2071,7 @@ Vue 3 API/live-channel integration
 
 ```text
 Wave 2: visual device templates, graphical scenarios, and multi-page Vue console
+Wave 2.5: public-repository CI, server integration tests, container smoke, and tagged image publication
 Wave 3: user tests, observability, integrations, recording/replay, SDK
 ```
 

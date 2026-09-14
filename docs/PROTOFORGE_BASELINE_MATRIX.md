@@ -10,6 +10,14 @@ are not acceptance evidence.
 
 Statuses are `Not Started`, `In Progress`, `Verified`, and `Constrained`.
 
+## Current evidence snapshot
+
+The 2026-09-14 local release check passed 178 .NET tests, 28 Vue tests, the
+Vue production build, and `docker compose config`. ProtoForge remains at public
+commit `14b4e35`; its protocol breadth is treated as a public/static baseline,
+not as equivalent interoperability evidence. Continuous CI evidence is still
+required so that a locally verified row remains reproducible on every change.
+
 ## Capability groups
 
 | Capability | Owner module | Target wave | Acceptance evidence | Status |
@@ -29,6 +37,7 @@ Statuses are `Not Started`, `In Progress`, `Verified`, and `Constrained`.
 | Vue developer console | Web ClientApp | 1, 2 | Vitest, typecheck, production build, and desktop/mobile browser evidence | Verified |
 | OpenAPI and RFC Problem Details | Web | 1 | `V1ApiContractTests` and `AuthenticationTests` with stable `errorCode` values | Verified |
 | SignalR state and log streaming | Web / ClientApp | 1 | `RuntimeHubTests`, `useRuntimeSignalR.test.ts`, and polling-fallback tests | Verified |
+| release evidence: CI, server integration, container smoke, and image publication | Delivery | 2.5 | GitHub Actions checks, `WebApplicationFactory` tests, Docker smoke, and Docker Hub tag record | In Progress |
 
 ## Protocol baseline
 
@@ -71,3 +80,13 @@ browser inspection must show no rendering errors or horizontal page overflow.
 
 This gate does not include a template marketplace, automated test-report
 platform, forwarding, Webhooks, recording/replay, or additional protocols.
+
+## Wave 2.5 release evidence gate
+
+Wave 2.5 is accepted when pull requests run the complete .NET and Vue checks on
+standard GitHub-hosted Ubuntu runners; server integration tests execute the
+real `Program` composition root through `Microsoft.AspNetCore.Mvc.Testing`;
+Docker configuration and image construction succeed; and tags or an explicit
+manual dispatch can publish an immutable image tag to Docker Hub. CI must not
+require Docker Hub credentials for pull requests, and publication credentials
+must be read only from GitHub Actions secrets.
