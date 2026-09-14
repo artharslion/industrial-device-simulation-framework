@@ -34,6 +34,7 @@
     <ProjectReference Include="..\IndustrialSim.Application\IndustrialSim.Application.csproj" />
     <ProjectReference Include="..\IndustrialSim.Persistence\IndustrialSim.Persistence.csproj" />
     <ProjectReference Include="..\IndustrialSim.Templates\IndustrialSim.Templates.csproj" />
+    <ProjectReference Include="..\IndustrialSim.Observability\IndustrialSim.Observability.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
   </ItemGroup>
   <ItemGroup>

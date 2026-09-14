@@ -1,8 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Threading.Channels;
-using IndustrialSim.Core.Domain;
-using IndustrialSim.Hosting;
+using IndustrialSim.Observability.Events;
 
 namespace IndustrialSim.Web.Hubs;
 
@@ -28,24 +27,26 @@ public sealed class RuntimeStreamSubscription : IAsyncDisposable
     }
 }
 
-public sealed class RuntimeStreamBroker
+public sealed class RuntimeStreamBroker : IAsyncDisposable
 {
     private readonly ConcurrentDictionary<Guid, Channel<RuntimeStreamEvent>> _subscribers = new();
-    private readonly HashSet<SimulationHost> _attached = [];
-    private readonly object _attachGate = new();
+    private readonly RuntimeEventSubscription _source;
+    private readonly CancellationTokenSource _cancellation = new();
+    private readonly Task _pump;
     private readonly int _capacity;
-    private long _sequence;
     private long _droppedEvents;
 
-    public RuntimeStreamBroker(int capacity = 256) => _capacity = capacity > 0 ? capacity : throw new ArgumentOutOfRangeException(nameof(capacity));
-    public long DroppedEvents => Interlocked.Read(ref _droppedEvents);
-
-    public void Attach(ISimulationRegistry registry)
+    public RuntimeStreamBroker(RuntimeEventLog eventLog, int capacity = 256)
     {
-        ArgumentNullException.ThrowIfNull(registry);
-        foreach (var summary in registry.List()) Attach(registry.Get(summary.DeviceId));
-        registry.SimulationAdded += Attach;
+        ArgumentNullException.ThrowIfNull(eventLog);
+        _capacity = capacity > 0 ? capacity : throw new ArgumentOutOfRangeException(nameof(capacity));
+        _source = eventLog.Subscribe(
+            new RuntimeEventQuery(EventTypes: ["DataPointChanged"], Limit: 1000),
+            Math.Max(256, capacity));
+        _pump = Task.Run(() => PumpAsync(_cancellation.Token), CancellationToken.None);
     }
+
+    public long DroppedEvents => Interlocked.Read(ref _droppedEvents);
 
     public RuntimeStreamSubscription Subscribe()
     {
@@ -53,7 +54,7 @@ public sealed class RuntimeStreamBroker
         var channel = Channel.CreateBounded<RuntimeStreamEvent>(new BoundedChannelOptions(_capacity)
         {
             SingleReader = true,
-            SingleWriter = false,
+            SingleWriter = true,
             FullMode = BoundedChannelFullMode.Wait
         });
         _subscribers[id] = channel;
@@ -63,24 +64,32 @@ public sealed class RuntimeStreamBroker
         });
     }
 
-    private void Attach(SimulationHandle handle)
+    public async ValueTask DisposeAsync()
     {
-        lock (_attachGate)
-        {
-            if (!_attached.Add(handle.Host)) return;
-            handle.Host.State.DataPointChanged += changed => Publish(handle.Host, changed);
-        }
+        await _cancellation.CancelAsync();
+        await _pump;
+        await _source.DisposeAsync();
+        _cancellation.Dispose();
+        foreach (var channel in _subscribers.Values) channel.Writer.TryComplete();
+        _subscribers.Clear();
     }
 
-    private void Publish(SimulationHost host, DataPointChanged changed)
+    private async Task PumpAsync(CancellationToken cancellationToken)
     {
-        var @event = new RuntimeStreamEvent(
-            Interlocked.Increment(ref _sequence),
-            changed.DeviceId.Value,
-            changed.DataPointId.Value,
-            JsonSerializer.SerializeToElement(changed.NewValue.Value, changed.NewValue.Value.GetType()),
-            host.Engine.CurrentTime.Elapsed);
-        foreach (var channel in _subscribers.Values)
-            if (!channel.Writer.TryWrite(@event)) Interlocked.Increment(ref _droppedEvents);
+        try
+        {
+            await foreach (var envelope in _source.Reader.ReadAllAsync(cancellationToken))
+            {
+                var @event = new RuntimeStreamEvent(
+                    envelope.Sequence,
+                    envelope.DeviceId,
+                    envelope.Data.GetProperty("dataPoint").GetString()!,
+                    envelope.Data.GetProperty("newValue").Clone(),
+                    envelope.SimulationTime);
+                foreach (var channel in _subscribers.Values)
+                    if (!channel.Writer.TryWrite(@event)) Interlocked.Increment(ref _droppedEvents);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
 }

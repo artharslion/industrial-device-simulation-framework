@@ -7,6 +7,8 @@ using IndustrialSim.Hosting;
 using IndustrialSim.Persistence;
 using IndustrialSim.Persistence.Repositories;
 using IndustrialSim.Web.Hubs;
+using IndustrialSim.Observability.Events;
+using IndustrialSim.Observability.Security;
 using IndustrialSim.Persistence.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authorization.Policy;
@@ -21,7 +23,8 @@ public static class ControlPlaneServices
         this IServiceCollection services,
         SimulationRegistry registry,
         string connectionString,
-        string authMode = "Disabled")
+        string authMode = "Disabled",
+        RuntimeEventLogOptions? observabilityOptions = null)
     {
         services.AddSingleton<ISimulationRegistry>(registry);
         services.AddSingleton(registry);
@@ -33,12 +36,13 @@ public static class ControlPlaneServices
         services.AddScoped<ITemplateCatalogRepository, TemplateCatalogRepository>();
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<IndustrialSimDbContext>());
         services.AddScoped<DeviceCatalogRestoreService>();
-        services.AddSingleton(provider =>
-        {
-            var broker = new RuntimeStreamBroker();
-            broker.Attach(provider.GetRequiredService<ISimulationRegistry>());
-            return broker;
-        });
+        services.AddSingleton(observabilityOptions ?? new RuntimeEventLogOptions());
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<SecretRedactor>();
+        services.AddSingleton<IRuntimeEventEnvelopeFactory, RuntimeEventEnvelopeFactory>();
+        services.AddSingleton<RuntimeEventLog>();
+        services.AddSingleton<IHostedService, RuntimeEventLogLifecycle>();
+        services.AddSingleton(provider => new RuntimeStreamBroker(provider.GetRequiredService<RuntimeEventLog>()));
         services.AddSignalR();
         services.AddOpenApi();
         services.AddSingleton(new IndustrialAuthOptions(authMode));

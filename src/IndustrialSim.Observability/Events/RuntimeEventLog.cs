@@ -99,15 +99,25 @@ public sealed class RuntimeEventLog : IAsyncDisposable
         });
     }
 
+    public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        var pumpCancellation = _pumpCancellation;
+        var pump = _pump;
+        if (pumpCancellation is null || pump is null) return;
+        await pumpCancellation.CancelAsync();
+        await pump.WaitAsync(cancellationToken);
+        pumpCancellation.Dispose();
+        _pumpCancellation = null;
+        _pump = null;
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
         _disposed = true;
         if (_registry is not null) _registry.SimulationAdded -= AttachHost;
         _ingress.Writer.TryComplete();
-        if (_pumpCancellation is not null) await _pumpCancellation.CancelAsync();
-        if (_pump is not null) await _pump;
-        _pumpCancellation?.Dispose();
+        await StopAsync();
         foreach (var subscriber in _subscribers.Values) subscriber.Channel.Writer.TryComplete();
         _subscribers.Clear();
     }

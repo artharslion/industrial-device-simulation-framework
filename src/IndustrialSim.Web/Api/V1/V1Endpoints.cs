@@ -9,6 +9,7 @@ using IndustrialSim.Hosting;
 using IndustrialSim.Persistence;
 using IndustrialSim.Scenarios;
 using IndustrialSim.Web.Hubs;
+using IndustrialSim.Observability.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
@@ -62,7 +63,7 @@ public static class V1Endpoints
             Results.Ok(registry.Get(deviceId).Host.State.Snapshot().ToDictionary(item => item.Key, item => item.Value?.Value)));
         api.MapPut("/devices/{deviceId}/state/{dataPoint}", WriteState).RequireAuthorization(IndustrialPolicies.Operator);
         api.MapGet("/devices/{deviceId}/runtime", (string deviceId, ISimulationRegistry registry) => Results.Ok(Runtime(registry.Get(deviceId).Host)));
-        api.MapGet("/devices/{deviceId}/events", (string deviceId, ISimulationRegistry registry) => Results.Ok(registry.Get(deviceId).Host.Events));
+        api.MapGet("/devices/{deviceId}/events", RuntimeEvents);
         api.MapGet("/devices/{deviceId}/faults", (string deviceId, ISimulationRegistry registry) => Results.Ok(registry.Get(deviceId).Host.FaultManager.ActiveFaults));
         api.MapPost("/devices/{deviceId}/faults", ActivateFault).RequireAuthorization(IndustrialPolicies.Operator);
         api.MapPost("/devices/{deviceId}/faults/{faultId}/recover", (string deviceId, string faultId, ISimulationRegistry registry) =>
@@ -135,6 +136,7 @@ public static class V1Endpoints
         ISimulationRegistry registry,
         IDeviceCatalogRepository repository,
         IScenarioCatalogRepository scenarios,
+        RuntimeEventLog eventLog,
         CancellationToken cancellationToken)
     {
         var handle = registry.Get(deviceId);
@@ -194,8 +196,27 @@ public static class V1Endpoints
             protocols = handle.Host.Protocols.Select(protocol => new { name = protocol.Key, running = protocol.Value.IsRunning }),
             scenarios = new { active = handle.Host.ActiveScenarioName, running = handle.Host.ScenarioRunner?.IsRunning == true, available = await scenarios.ListAsync(cancellationToken) },
             faults = handle.Host.FaultManager.ActiveFaults,
-            events = handle.Host.Events.TakeLast(100)
+            events = eventLog.Query(new RuntimeEventQuery(DeviceId: deviceId, Limit: 100))
         });
+    }
+
+    private static IResult RuntimeEvents(
+        string deviceId,
+        string? eventType,
+        long? afterSequence,
+        int? limit,
+        ISimulationRegistry registry,
+        RuntimeEventLog eventLog)
+    {
+        registry.Get(deviceId);
+        IReadOnlyList<string>? eventTypes = string.IsNullOrWhiteSpace(eventType)
+            ? null
+            : eventType.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return Results.Ok(eventLog.Query(new RuntimeEventQuery(
+            deviceId,
+            eventTypes,
+            afterSequence,
+            limit ?? 100)));
     }
 
     private static async Task<IResult> UpdateDeviceAsync(

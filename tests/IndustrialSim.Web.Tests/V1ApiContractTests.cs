@@ -19,6 +19,33 @@ namespace IndustrialSim.Web.Tests;
 public sealed class V1ApiContractTests
 {
     [Fact]
+    public async Task Runtime_events_use_bounded_structured_log_filters_and_sequence_cursor()
+    {
+        await using var fixture = await V1Fixture.StartAsync();
+        Assert.Equal(HttpStatusCode.Created, (await fixture.Client.PostAsJsonAsync("/api/v1/devices", DeviceRequest("event-device"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PutAsJsonAsync("/api/v1/devices/event-device/state/speed", 1)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PutAsJsonAsync("/api/v1/devices/event-device/state/speed", 2)).StatusCode);
+
+        JsonElement events = default;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        do
+        {
+            events = await fixture.Client.GetFromJsonAsync<JsonElement>(
+                "/api/v1/devices/event-device/events?eventType=DataPointChanged&limit=1",
+                timeout.Token);
+            if (events.GetArrayLength() == 0) await Task.Delay(10, timeout.Token);
+        } while (events.GetArrayLength() == 0);
+
+        var latest = events[0];
+        Assert.Equal("DataPointChanged", latest.GetProperty("eventType").GetString());
+        Assert.Equal(2, latest.GetProperty("data").GetProperty("newValue").GetInt32());
+        var sequence = latest.GetProperty("sequence").GetInt64();
+        var after = await fixture.Client.GetFromJsonAsync<JsonElement>(
+            $"/api/v1/devices/event-device/events?afterSequence={sequence}&limit=10");
+        Assert.Equal(0, after.GetArrayLength());
+    }
+
+    [Fact]
     public async Task V1_devices_protocols_scenarios_state_and_openapi_are_available()
     {
         await using var fixture = await V1Fixture.StartAsync();

@@ -4,6 +4,7 @@ using IndustrialSim.Web.Hubs;
 using IndustrialSim.Hosting;
 using IndustrialSim.Application.Devices;
 using IndustrialSim.Persistence;
+using IndustrialSim.Observability.Events;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,7 +29,11 @@ await registry.AddAsync(simulation);
 builder.Services.AddIndustrialSimControlPlane(
     registry,
     builder.Configuration.GetConnectionString("IndustrialSim") ?? "Data Source=industrial-sim.db",
-    builder.Configuration["Auth:Mode"] ?? "Disabled");
+    builder.Configuration["Auth:Mode"] ?? "Disabled",
+    new RuntimeEventLogOptions(
+        builder.Configuration.GetValue("IndustrialSim:Observability:IngressCapacity", 2048),
+        builder.Configuration.GetValue("IndustrialSim:Observability:RetentionCapacity", 1000),
+        builder.Configuration.GetValue("IndustrialSim:Observability:SubscriberCapacity", 256)));
 
 var app = builder.Build();
 app.UseIndustrialSimProblemDetails();
@@ -43,6 +48,9 @@ app.Use(async (context, next) =>
     await next();
 });
 app.Logger.LogInformation("Starting industrial simulation for device {DeviceId} on Web port {WebPort}", simulation.Runtime.Definition.Id.Value, simulation.WebPort);
+var runtimeEventLog = app.Services.GetRequiredService<RuntimeEventLog>();
+runtimeEventLog.Attach(registry);
+await runtimeEventLog.StartAsync(app.Lifetime.ApplicationStopping);
 await simulation.StartAsync(app.Lifetime.ApplicationStopping);
 
 app.MapIndustrialSimApi(simulation, requireAuthorization: true);

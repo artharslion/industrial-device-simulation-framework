@@ -60,6 +60,20 @@ public sealed class WebApplicationFactoryTests
             using (var state = JsonDocument.Parse(await client.GetStringAsync("/api/v1/devices/factory-device/state")))
                 Assert.Equal(1d, state.RootElement.GetProperty("value").GetDouble());
 
+            Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync("/api/v1/devices/factory-device/state/value", 2d)).StatusCode);
+            JsonElement events = default;
+            using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3)))
+            {
+                do
+                {
+                    events = await client.GetFromJsonAsync<JsonElement>(
+                        "/api/v1/devices/factory-device/events?eventType=DataPointChanged&limit=1",
+                        timeout.Token);
+                    if (events.GetArrayLength() == 0) await Task.Delay(10, timeout.Token);
+                } while (events.GetArrayLength() == 0);
+            }
+            Assert.Equal(2d, events[0].GetProperty("data").GetProperty("newValue").GetDouble());
+
             var openApi = await client.GetAsync("/openapi/v1.json");
             Assert.Equal(HttpStatusCode.OK, openApi.StatusCode);
             Assert.Equal("application/json", openApi.Content.Headers.ContentType?.MediaType);
