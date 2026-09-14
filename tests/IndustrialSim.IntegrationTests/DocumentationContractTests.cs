@@ -163,4 +163,29 @@ public sealed class DocumentationContractTests
         Assert.Contains("Data Source=/app/data/industrial-sim.db", compose, StringComparison.Ordinal);
         Assert.Contains("industrial-sim-data:/app/data", compose, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Wave_three_one_plan_preserves_runtime_authority_and_defines_observability_contracts()
+    {
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var plan = File.ReadAllText(Path.Combine(root, "docs", "plans", "2026-09-14-wave-3-1-observability.md"));
+        var adr = File.ReadAllText(Path.Combine(root, "docs", "adr", "0007-observability-boundary.md"));
+
+        string[] requiredPlanTerms =
+        [
+            "StateStore remains the only live-state authority",
+            "bounded ingress channel", "TryWrite", "dropped-event",
+            "industrial_simulation_ticks_total", "industrial_stream_events_dropped_total",
+            "/health/live", "/health/ready", "/metrics",
+            "trace correlation", "secret redaction", "simulation/runtime isolation"
+        ];
+
+        foreach (var term in requiredPlanTerms)
+            Assert.Contains(term, plan, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Contains("observer", adr, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("must not own or mutate device state", adr, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("SQLite", adr, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("batch", adr, StringComparison.OrdinalIgnoreCase);
+    }
 }

@@ -539,6 +539,12 @@ git commit -m "feat: add scenario editor and local template catalog"
 
 ### Task 3.1: Add structured event log, health, metrics, and tracing
 
+> Execution update (2026-09-14): the scope remains valid, but the file list,
+> event-flow assumptions, backpressure design, and single-commit boundary below
+> predate the current multi-host Web/SignalR implementation. Execute
+> `docs/plans/2026-09-14-wave-3-1-observability.md` instead; it is the detailed
+> Wave 3.1 design and implementation plan for the current codebase.
+
 **Files:**
 - Create: `src/IndustrialSim.Observability/IndustrialSim.Observability.csproj`
 - Create: `src/IndustrialSim.Observability/RuntimeEventLog.cs`
