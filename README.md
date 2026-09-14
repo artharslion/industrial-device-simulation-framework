@@ -16,6 +16,8 @@ One logical device is owned by one runtime `StateStore` and can be observed thro
 - Operate devices from a multi-page Web console.
 - Create reusable device templates and persistent scenario definitions.
 - Optionally enable local users with Viewer, Operator, and Admin roles.
+- Inspect bounded structured runtime events, health, Prometheus metrics, and
+  trace-correlated control operations.
 
 ## Five-minute start with Docker
 
@@ -81,6 +83,20 @@ Run the Web console:
 $env:INDUSTRIALSIM_DEVICE_CONFIG = "$PWD/examples/devices/pump.yaml"
 dotnet run --project src/IndustrialSim.Web --urls http://localhost:8080
 ```
+
+Operational endpoints are anonymous so local tooling and container
+orchestrators can inspect the process:
+
+| Endpoint | Meaning |
+| --- | --- |
+| `/health/live` | Web process can execute requests; independent of SQLite, devices, protocols, and exporters |
+| `/health/ready` | Control plane can query the registry, the event pump is healthy, and SQLite is reachable |
+| `/metrics` | Prometheus text for bounded runtime, fault, protocol, scenario, tick, and stream-drop metrics |
+
+Set `OpenTelemetry__Otlp__Endpoint` to an absolute HTTP or HTTPS collector
+endpoint to enable batch OTLP trace export. With no endpoint configured, no
+external trace exporter runs. Observability does not persist continuous live
+state or events to SQLite and does not replace `StateStore` as runtime authority.
 
 ## Run a scenario
 
@@ -186,7 +202,7 @@ dotnet test IndustrialSim.sln --configuration Release --no-build
 docker compose config
 ```
 
-The test suite covers the shared runtime state, deterministic scenarios, fault activation and recovery, real OPC UA and Modbus clients, HTTP contracts, persistence, authentication, and the Web console.
+The test suite covers the shared runtime state, deterministic scenarios, fault activation and recovery, real OPC UA and Modbus clients, HTTP contracts, persistence, authentication, the Web console, bounded runtime events, health, Prometheus metrics, trace correlation, secret redaction, and observation-path isolation.
 
 ## Continuous integration and Docker releases
 

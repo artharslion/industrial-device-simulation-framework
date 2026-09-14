@@ -1,7 +1,7 @@
 # Industrial Device Simulation Framework 与 ProtoForge 对比分析
 
 > 调研日期：2026-09-14
-> IndustrialSim 基线：`9d480d2`
+> IndustrialSim 基线：`5e51b2e`
 > ProtoForge 公共仓库基线：[`14b4e35`](https://github.com/suoten/ProtoForge/commit/14b4e3535a4d1787b88f7a11714e70e91e2bc821)，2026-04-24
 
 ## 1. 结论
@@ -9,7 +9,7 @@
 IndustrialSim 已经不再处于“核心产品闭环尚未完成”的阶段。v0.1、Wave 1、
 Wave 2，以及设备启动和目录恢复闭环均已完成。当前更准确的判断是：
 
-> IndustrialSim 在协议无关的统一状态、确定性执行、跨协议一致性和一等故障模型上更强；ProtoForge 在协议数量、现成模板、用户测试平台、可观测性和外部集成上更完整。
+> IndustrialSim 在协议无关的统一状态、确定性执行、跨协议一致性、一等故障模型和运行时隔离型可观测性上更强；ProtoForge 在协议数量、现成模板、用户测试平台和外部集成上更完整。
 
 ProtoForge 是用户可见能力 baseline，不是源码或内部架构模板。IndustrialSim
 不应通过复制协议所有权、实时循环或平台数据模型来追求表面功能数量。
@@ -41,6 +41,14 @@ IndustrialSim 的当前验证结果：
   容器以 `uid=1654(app)` 运行并创建 `/app/data/industrial-sim.db`，`/` 和
   `/api/runtime` 均可访问；
 - OPC UA、Modbus TCP 存在真实客户端及跨协议共享状态测试。
+- Wave 3.1 本地验收在 `5e51b2e` 后通过 207 个 .NET 测试、28 个 Vue/Vitest
+  测试和 Vue production build；`RuntimeEventLogTests`、`RuntimeIsolationTests`、
+  `HealthEndpointTests`、`PrometheusMetricsTests`、`TraceCorrelationTests` 和
+  secret-redaction 测试覆盖有界事件、drop、health、metrics、trace correlation
+  和 simulation isolation；
+- source host 与本地新构建的 `industrial-sim:wave31` 镜像都对
+  `/health/live`、`/health/ready`、`/metrics` 返回 HTTP 200。容器未传 SQLite
+  连接字符串，以 UID 1654 创建默认数据库，并暴露七个约定的 metric family。
 
 ProtoForge 的结论来自 README、项目结构和静态源码检查。本机没有安装
 `pytest`，因此没有执行其测试套件。ProtoForge README 中“15 种协议”和
@@ -73,6 +81,7 @@ ProtoForge 的结论来自 README、项目结构和静态源码检查。本机�
 | 场景建模 | 已追平并具有确定性优势 | YAML 导入导出、图形编辑、可复用目标、确定性运行 |
 | 认证与 API | 已追平 | 可选 Identity/RBAC、`/api/v1`、OpenAPI、Problem Details |
 | Docker 和快速开始 | 基础已追平 | Dockerfile、Compose、持久卷、Pump 双协议示例和操作文档 |
+| 运行时可观测性 | 已追平并强调隔离 | 有界结构化事件、drop accounting、health、Prometheus、OpenTelemetry correlation 和阻塞观察者隔离测试 |
 
 ## 5. 仍然存在的差距
 
@@ -94,11 +103,17 @@ ProtoForge 已公开提供用例、套件、断言、报告和 quick test。Indu
 IndustrialSim 不应复制通用 HTTP 测试器；应利用确定性时钟、跨协议统一状态和
 Fault，提供工业仿真专用的可重复测试与诊断。
 
-### 5.3 可观测性
+### 5.3 可观测性边界
 
-IndustrialSim 已有运行事件和 SignalR 流，但尚未完成 liveness/readiness、
-Prometheus 指标、OpenTelemetry tracing，以及有界结构化日志保留和 dropped-event
-指标。
+Wave 3.1 Observability Gate 已关闭。IndustrialSim 现在提供进程内有界结构化事件
+保留与过滤、非阻塞 subscriber、runtime-log/SignalR drop 计数、独立 liveness 和
+readiness、七个低基数 Prometheus metric family，以及带 secret redaction 的
+OpenTelemetry control-operation correlation。source host 和本地 Docker image 的三个
+观测端点均已实际返回 HTTP 200。
+
+这不代表持久化日志平台、分布式 collector 可用性保证，或对第三方库内部日志的全面
+重写。OTLP exporter 是可选 batch exporter，collector 不可用不参与 readiness，也
+不得阻塞 simulation tick。SQLite 仍不保存连续 live state 或事件流。
 
 ### 5.4 外部集成和录制回放
 
@@ -117,12 +132,11 @@ IndustrialSim 也没有与 ProtoForge 49 个内置模板等量的 curated catalo
 
 ## 6. 当前优先级
 
-1. **Wave 3.1 Observability**：结构化事件、health、metrics、tracing。
-2. **Wave 3.2/3.3 User Testing**：用例、套件、断言、报告和可解释 quick test。
-3. **Starter Template Pack**：先交付 8–12 个经过映射与行为验证的模板，不建设
+1. **Wave 3.2/3.3 User Testing**：用例、套件、断言、报告和可解释 quick test。
+2. **Starter Template Pack**：先交付 8–12 个经过映射与行为验证的模板，不建设
    marketplace。
-4. **Wave 3 Integrations**：Webhook、forwarding、语义录制回放、typed SDK。
-5. **Wave 4 Protocols**：按需求和互操作证据分批增加协议。
+3. **Wave 3 Integrations**：Webhook、forwarding、语义录制回放、typed SDK。
+4. **Wave 4 Protocols**：按需求和互操作证据分批增加协议。
 
 ## 7. 不应改变的架构决策
 
@@ -139,5 +153,5 @@ IndustrialSim 也没有与 ProtoForge 49 个内置模板等量的 curated catalo
 确定性地跨协议运行、故障、验证和恢复”衡量，IndustrialSim 已形成更清晰且更难
 替代的核心价值。
 
-下一阶段不应回到横向堆协议，而应在现有 Release Evidence Gate 上继续建设
-Wave 3.1 可观测性，再围绕确定性仿真构建用户测试能力。
+下一阶段不应回到横向堆协议。Wave 3.1 已关闭；是否进入 Wave 3.2 User Testing
+应由单独决策确认，再围绕确定性仿真构建用户测试能力。

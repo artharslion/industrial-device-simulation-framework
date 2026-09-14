@@ -21,6 +21,12 @@ image construction, and `/api/runtime` smoke. Manual release run
 [`34802093256`](https://github.com/artharslion/industrial-device-simulation-framework/actions/runs/34802093256)
 published Docker Hub tag `ci-smoke` with digest
 `sha256:3b90a83c8631e7e39828a47b26cd996c095c650a69a45bc648fada4ec113b790`.
+Wave 3.1 observability is verified through IndustrialSim commit `5e51b2e`.
+The local acceptance run passed 207 .NET tests and 28 Vue tests plus the Vue
+production build. Source-host and newly built Docker image checks returned HTTP
+200 for `/health/live`, `/health/ready`, and `/metrics`; the Docker check omitted
+an explicit SQLite connection string and created the writable default database
+as UID 1654. The scrape exposed all seven contracted metric families.
 ProtoForge remains at public commit `14b4e35`; its protocol breadth is treated
 as a public/static baseline, not as equivalent interoperability evidence.
 
@@ -36,7 +42,7 @@ as a public/static baseline, not as equivalent interoperability evidence.
 | forwarding: bounded delivery targets | Integrations | 3 | Outage, retry, backpressure, and runtime-isolation tests | Not Started |
 | recording: semantic capture and replay | Integrations | 3 | Ordered deterministic replay and storage-failure tests | Not Started |
 | webhooks: filtered event delivery | Integrations | 3 | CRUD, retry, dead-letter, and outage tests | Not Started |
-| metrics: health, Prometheus, and tracing | Observability | 3 | Scrape, health, trace, and dropped-event tests | Not Started |
+| metrics: health, Prometheus, and tracing | Observability | 3 | `RuntimeEventLogTests`, `RuntimeIsolationTests`, `IndustrialSimMetricsTests`, `HealthEndpointTests`, `PrometheusMetricsTests`, `TraceCorrelationTests`, and `TraceRedactionTests`; source and Docker endpoint checks | Verified |
 | authentication: optional identity and RBAC | Web / Persistence | 1 | `AuthenticationTests`: disabled/local modes, bootstrap, login, password, users, roles, and secret exclusion | Verified |
 | settings: persisted non-secret control-plane settings | Application / Persistence | 1, 5 | Restart, validation, and secret-exclusion tests | In Progress |
 | sdk: typed .NET client | Client | 3 | OpenAPI contract and in-memory-host tests | Not Started |
@@ -103,3 +109,31 @@ Accepted on 2026-09-14 at `9d480d2`. The repository has pull-request/push CI on
 container smoke passed, and manual dispatch published the immutable `ci-smoke`
 digest recorded above. A formal semantic-version tag has not yet been cut and
 is not claimed as evidence here.
+
+## Wave 3.1 observability release gate
+
+Wave 3.1 is accepted when runtime observations use bounded non-blocking ingress,
+retention, filtering, and subscriber delivery; overload is counted; health and
+Prometheus endpoints have distinct tested semantics; HTTP control operations
+correlate to retained events through OpenTelemetry trace IDs; secrets are
+redacted before retained or custom tracing surfaces; and blocked observation
+cannot delay deterministic ticks or stop real-time simulation.
+
+Accepted on 2026-09-14 through `5e51b2e`. `RuntimeEventLogTests` cover ordered
+retention, filtering, subscribers, concurrency, and drops. `RuntimeIsolationTests`
+cover blocked formatting and unread subscribers. `HealthEndpointTests` prove
+SQLite failure makes readiness return 503 while liveness remains 200 and a
+stopped device remains ready. `PrometheusMetricsTests` and
+`IndustrialSimMetricsTests` cover the exact seven metric families, fixed label
+vocabularies, tick collection, state/scenario/fault changes, and runtime-log and
+SignalR drops. `TraceCorrelationTests` links the ASP.NET server span, the
+`industrial.state.write` span, and its retained event; `TraceRedactionTests`
+excludes raw credentials from custom tags.
+
+The full local acceptance run passed 207 .NET tests, 28 Vue tests, and the Vue
+production build. A source-host run and local image `industrial-sim:wave31`
+(`sha256:947e3e2417a20bece803a86f4aa0b34f2d4895f857033cf57b698baee73ccc4c`)
+returned 200 for `/health/live`, `/health/ready`, and `/metrics`. The container
+was run without `ConnectionStrings__IndustrialSim`, used UID 1654, had a
+writable `/app/data`, and created `/app/data/industrial-sim.db`. This gate does
+not claim new protocol interoperability or a published Wave 3.1 release image.

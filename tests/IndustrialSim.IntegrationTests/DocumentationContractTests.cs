@@ -188,4 +188,29 @@ public sealed class DocumentationContractTests
         Assert.Contains("SQLite", adr, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("batch", adr, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void Wave_three_one_observability_gate_records_executed_acceptance_evidence()
+    {
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var matrix = File.ReadAllText(Path.Combine(root, "docs", "PROTOFORGE_BASELINE_MATRIX.md"));
+        var comparison = File.ReadAllText(Path.Combine(root, "docs", "PROTOFORGE_COMPARISON.md"));
+        var implementationNotes = File.ReadAllText(Path.Combine(root, "docs", "IMPLEMENTATION_NOTES.md"));
+        var readme = File.ReadAllText(Path.Combine(root, "README.md"));
+        var plan = File.ReadAllText(Path.Combine(root, "docs", "plans", "2026-09-14-wave-3-1-observability.md"));
+
+        Assert.Contains("| metrics: health, Prometheus, and tracing | Observability | 3 |", matrix, StringComparison.Ordinal);
+        Assert.Contains("TraceRedactionTests`; source and Docker endpoint checks | Verified |", matrix, StringComparison.Ordinal);
+        Assert.Contains("Accepted on 2026-09-14 through `5e51b2e`", matrix, StringComparison.Ordinal);
+        Assert.Contains("207 .NET tests", matrix, StringComparison.Ordinal);
+        Assert.Contains("Wave 3.1 Observability Gate 已关闭", comparison, StringComparison.Ordinal);
+        Assert.DoesNotContain("尚未完成 liveness/readiness", comparison, StringComparison.Ordinal);
+        Assert.Contains("Wave 3.2 User Testing", comparison, StringComparison.Ordinal);
+        Assert.Contains("sha256:947e3e2417a", implementationNotes, StringComparison.Ordinal);
+        Assert.Contains("`/health/live`", readme, StringComparison.Ordinal);
+        Assert.Contains("`/health/ready`", readme, StringComparison.Ordinal);
+        Assert.Contains("`/metrics`", readme, StringComparison.Ordinal);
+        Assert.Contains("Status (2026-09-14):** Completed", plan, StringComparison.Ordinal);
+        Assert.Contains("No Wave 3.2 work is included", plan, StringComparison.Ordinal);
+    }
 }

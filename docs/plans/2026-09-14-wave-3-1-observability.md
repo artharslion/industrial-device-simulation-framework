@@ -8,6 +8,14 @@
 
 **Tech Stack:** .NET 10, `System.Threading.Channels`, ASP.NET Core health checks, `prometheus-net.AspNetCore` 8.2.1, OpenTelemetry 1.18.0, xUnit, `WebApplicationFactory`/TestServer.
 
+**Status (2026-09-14):** Completed through implementation commit `5e51b2e`.
+The acceptance run passed 207 .NET tests, 28 Vue tests, the Vue production
+build, source-host endpoint checks, and a fresh Docker build/run without an
+explicit SQLite connection string. `/health/live`, `/health/ready`, and
+`/metrics` returned HTTP 200 in both manual runs. The local Docker image ID was
+`sha256:947e3e2417a20bece803a86f4aa0b34f2d4895f857033cf57b698baee73ccc4c`.
+No Wave 3.2 work is included.
+
 ---
 
 ## 1. Current-code review and Task 3.1 delta

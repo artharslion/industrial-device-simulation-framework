@@ -36,3 +36,38 @@
   `uid=1654(app)` and created `/app/data/industrial-sim.db` owned by `app:app`.
 - The earlier Phase 8 daemon failure remains recorded above as historical
   context; it is no longer the current release-gate state.
+
+## Wave 3.1 observability verification environment
+
+- Reverified on 2026-09-14 (Asia/Shanghai) through commit `5e51b2e`.
+- The full Release test run passed 207 .NET tests. The Vue suite passed 28 tests
+  across 15 files, and `vue-tsc --noEmit && vite build` completed successfully.
+- `RuntimeEventLogTests` and `RuntimeIsolationTests` verify bounded retention,
+  filters, subscribers, ingress/subscriber drop accounting, and that blocked
+  observation does not delay deterministic ticks or stop real-time simulation.
+- `/health/live` is process-only. `/health/ready` checks the registry, running
+  event pump, and SQLite connectivity; tests prove SQLite unavailability makes
+  readiness return 503 while liveness remains 200, and stopped devices remain
+  ready.
+- Prometheus uses an injected custom registry and fixed label vocabularies. The
+  exact exposed metric families are `industrial_simulation_ticks_total`,
+  `industrial_device_state_changes_total`, `industrial_scenario_actions_total`,
+  `industrial_faults_active`, `industrial_protocol_connections`,
+  `industrial_protocol_errors_total`, and
+  `industrial_stream_events_dropped_total`.
+- OpenTelemetry registers ASP.NET Core, HTTP client, and
+  `IndustrialSim.Observability` sources. OTLP export is absent unless
+  `OpenTelemetry:Otlp:Endpoint` is configured, and configured export uses the
+  batch processor. No per-tick spans are created.
+- A source-host manual run returned HTTP 200 with healthy JSON for
+  `/health/live` and `/health/ready`; `/metrics` returned 200 and all seven
+  metric families. Its temporary SQLite database was created successfully.
+- Docker Engine `29.2.1` built local image `industrial-sim:wave31` with image ID
+  `sha256:947e3e2417a20bece803a86f4aa0b34f2d4895f857033cf57b698baee73ccc4c`.
+  Without an explicit SQLite connection string, the container returned HTTP
+  200 for `/health/live`, `/health/ready`, and `/metrics`, ran as UID 1654, had
+  writable `/app/data`, and created `/app/data/industrial-sim.db`.
+- Observability remains an in-process observer. It does not own or mutate
+  device state, and SQLite does not store the continuous event log or live
+  datapoint stream. Secret redaction is evidenced for IndustrialSim-owned event
+  and custom tracing surfaces, not every third-party library log.
