@@ -8,7 +8,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-var configuredPath = Environment.GetEnvironmentVariable("INDUSTRIALSIM_DEVICE_CONFIG");
+var configuredPath = builder.Configuration["IndustrialSim:DeviceConfig"]
+    ?? Environment.GetEnvironmentVariable("INDUSTRIALSIM_DEVICE_CONFIG");
 var overrides = HostConfigurationOverrides.Resolve(
     cliOpcUaEndpoint: Option(args, "--opcua-endpoint"),
     cliModbusPort: Option(args, "--modbus-port"),
