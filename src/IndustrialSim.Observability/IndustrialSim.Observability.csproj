@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Bounded runtime observation, metrics, health, tracing, and redaction contracts.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../IndustrialSim.Hosting/IndustrialSim.Hosting.csproj" />
+  </ItemGroup>
+</Project>

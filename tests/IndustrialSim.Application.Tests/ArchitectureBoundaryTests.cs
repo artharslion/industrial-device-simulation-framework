@@ -12,7 +12,7 @@ public sealed class ArchitectureBoundaryTests
         string[] forbidden =
         [
             "IndustrialSim.Application", "IndustrialSim.Persistence", "IndustrialSim.Web",
-            "IndustrialSim.Protocols.Modbus", "IndustrialSim.Protocols.OpcUa"
+            "IndustrialSim.Observability", "IndustrialSim.Protocols.Modbus", "IndustrialSim.Protocols.OpcUa"
         ];
 
         AssertNoReferences(typeof(DeviceDefinition).Assembly, forbidden);
@@ -31,6 +31,20 @@ public sealed class ArchitectureBoundaryTests
         Assert.DoesNotContain("EntityFrameworkCore", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("IndustrialSim.Web", content, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("IndustrialSim.Persistence", content, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Observability_is_an_outer_observer_and_hosting_does_not_reference_it()
+    {
+        var root = RepositoryRoot();
+        var observability = File.ReadAllText(Path.Combine(root, "src", "IndustrialSim.Observability", "IndustrialSim.Observability.csproj"));
+        var hosting = File.ReadAllText(Path.Combine(root, "src", "IndustrialSim.Hosting", "IndustrialSim.Hosting.csproj"));
+
+        Assert.Contains("IndustrialSim.Hosting", observability, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("IndustrialSim.Web", observability, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("IndustrialSim.Persistence", observability, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("EntityFrameworkCore", observability, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("IndustrialSim.Observability", hosting, StringComparison.OrdinalIgnoreCase);
     }
 
     private static void AssertNoReferences(Assembly assembly, IEnumerable<string> forbidden)
