@@ -48,8 +48,9 @@ public sealed class RuntimeEventLogTests
         await log.StartAsync();
         await WaitUntilAsync(() => log.Query().Count > 0);
         await using var subscription = log.Subscribe(capacity: 1);
-        for (var value = 21; value <= 100; value++)
-            handle.Host.State.SetInternal(new DataPointId("speed"), value);
+        handle.Host.State.SetInternal(new DataPointId("speed"), 21);
+        await WaitUntilAsync(() => subscription.Reader.TryPeek(out _));
+        handle.Host.State.SetInternal(new DataPointId("speed"), 22);
 
         await WaitUntilAsync(() => log.SubscriberDropped > 0);
         Assert.True(subscription.Reader.TryRead(out _));
