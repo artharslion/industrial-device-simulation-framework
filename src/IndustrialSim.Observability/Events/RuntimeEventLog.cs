@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using IndustrialSim.Faults;
 using IndustrialSim.Hosting;
+using IndustrialSim.Observability.Metrics;
 
 namespace IndustrialSim.Observability.Events;
 
@@ -12,6 +13,7 @@ public sealed class RuntimeEventLog : IAsyncDisposable
     private readonly RuntimeEventLogOptions _options;
     private readonly IRuntimeEventEnvelopeFactory _factory;
     private readonly TimeProvider _timeProvider;
+    private readonly IndustrialSimMetrics? _metrics;
     private readonly Channel<EventCandidate> _ingress;
     private readonly ConcurrentDictionary<Guid, Subscriber> _subscribers = new();
     private readonly Queue<RuntimeEventEnvelope> _retained = new();
@@ -27,11 +29,16 @@ public sealed class RuntimeEventLog : IAsyncDisposable
     private int _running;
     private bool _disposed;
 
-    public RuntimeEventLog(RuntimeEventLogOptions options, IRuntimeEventEnvelopeFactory factory, TimeProvider timeProvider)
+    public RuntimeEventLog(
+        RuntimeEventLogOptions options,
+        IRuntimeEventEnvelopeFactory factory,
+        TimeProvider timeProvider,
+        IndustrialSimMetrics? metrics = null)
     {
         _options = (options ?? throw new ArgumentNullException(nameof(options))).Validate();
         _factory = factory ?? throw new ArgumentNullException(nameof(factory));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
+        _metrics = metrics;
         _ingress = Channel.CreateBounded<EventCandidate>(new BoundedChannelOptions(_options.IngressCapacity)
         {
             SingleReader = true,
@@ -58,6 +65,7 @@ public sealed class RuntimeEventLog : IAsyncDisposable
             }
             _registry = registry;
             registry.SimulationAdded += AttachHost;
+            _metrics?.Attach(registry);
         }
         foreach (var summary in registry.List()) AttachHost(registry.Get(summary.DeviceId));
     }
@@ -143,7 +151,11 @@ public sealed class RuntimeEventLog : IAsyncDisposable
             Interlocked.Increment(ref _sequence),
             _timeProvider.GetUtcNow(),
             Activity.Current?.Context);
-        if (!_ingress.Writer.TryWrite(candidate)) Interlocked.Increment(ref _ingressDropped);
+        if (!_ingress.Writer.TryWrite(candidate))
+        {
+            Interlocked.Increment(ref _ingressDropped);
+            _metrics?.RecordDroppedEvent("runtime-log", "ingress");
+        }
     }
 
     private async Task PumpAsync(CancellationToken cancellationToken)
@@ -153,6 +165,7 @@ public sealed class RuntimeEventLog : IAsyncDisposable
             await foreach (var candidate in _ingress.Reader.ReadAllAsync(cancellationToken))
             {
                 var envelope = _factory.Create(candidate.Observation, candidate.Sequence, candidate.ObservedAtUtc, candidate.ActivityContext);
+                _metrics?.Observe(candidate.Observation);
                 lock (_retentionGate)
                 {
                     _retained.Enqueue(envelope);
@@ -161,7 +174,11 @@ public sealed class RuntimeEventLog : IAsyncDisposable
                 foreach (var subscriber in _subscribers.Values)
                 {
                     if (!subscriber.Query.Matches(envelope)) continue;
-                    if (!subscriber.Channel.Writer.TryWrite(envelope)) Interlocked.Increment(ref _subscriberDropped);
+                    if (!subscriber.Channel.Writer.TryWrite(envelope))
+                    {
+                        Interlocked.Increment(ref _subscriberDropped);
+                        _metrics?.RecordDroppedEvent("runtime-log", "subscriber");
+                    }
                 }
             }
         }

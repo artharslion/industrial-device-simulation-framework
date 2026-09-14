@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Threading.Channels;
 using IndustrialSim.Observability.Events;
+using IndustrialSim.Observability.Metrics;
 
 namespace IndustrialSim.Web.Hubs;
 
@@ -34,12 +35,14 @@ public sealed class RuntimeStreamBroker : IAsyncDisposable
     private readonly CancellationTokenSource _cancellation = new();
     private readonly Task _pump;
     private readonly int _capacity;
+    private readonly IndustrialSimMetrics? _metrics;
     private long _droppedEvents;
 
-    public RuntimeStreamBroker(RuntimeEventLog eventLog, int capacity = 256)
+    public RuntimeStreamBroker(RuntimeEventLog eventLog, IndustrialSimMetrics? metrics = null, int capacity = 256)
     {
         ArgumentNullException.ThrowIfNull(eventLog);
         _capacity = capacity > 0 ? capacity : throw new ArgumentOutOfRangeException(nameof(capacity));
+        _metrics = metrics;
         _source = eventLog.Subscribe(
             new RuntimeEventQuery(EventTypes: ["DataPointChanged"], Limit: 1000),
             Math.Max(256, capacity));
@@ -87,7 +90,11 @@ public sealed class RuntimeStreamBroker : IAsyncDisposable
                     envelope.Data.GetProperty("newValue").Clone(),
                     envelope.SimulationTime);
                 foreach (var channel in _subscribers.Values)
-                    if (!channel.Writer.TryWrite(@event)) Interlocked.Increment(ref _droppedEvents);
+                    if (!channel.Writer.TryWrite(@event))
+                    {
+                        Interlocked.Increment(ref _droppedEvents);
+                        _metrics?.RecordDroppedEvent("signalr", "subscriber");
+                    }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }

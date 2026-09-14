@@ -4,5 +4,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../IndustrialSim.Hosting/IndustrialSim.Hosting.csproj" />
+    <PackageReference Include="prometheus-net" Version="8.2.1" />
   </ItemGroup>
 </Project>

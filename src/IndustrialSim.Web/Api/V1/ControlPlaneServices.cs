@@ -16,6 +16,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using IndustrialSim.Web.Health;
+using IndustrialSim.Observability.Metrics;
+using Prometheus;
 
 namespace IndustrialSim.Web.Api.V1;
 
@@ -42,9 +44,13 @@ public static class ControlPlaneServices
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<SecretRedactor>();
         services.AddSingleton<IRuntimeEventEnvelopeFactory, RuntimeEventEnvelopeFactory>();
+        services.AddSingleton(_ => Prometheus.Metrics.NewCustomRegistry());
+        services.AddSingleton<IndustrialSimMetrics>();
         services.AddSingleton<RuntimeEventLog>();
         services.AddSingleton<IHostedService, RuntimeEventLogLifecycle>();
-        services.AddSingleton(provider => new RuntimeStreamBroker(provider.GetRequiredService<RuntimeEventLog>()));
+        services.AddSingleton(provider => new RuntimeStreamBroker(
+            provider.GetRequiredService<RuntimeEventLog>(),
+            provider.GetRequiredService<IndustrialSimMetrics>()));
         services.AddHealthChecks()
             .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"])
             .AddCheck<IndustrialSimReadinessHealthCheck>("control-plane", tags: ["ready"]);

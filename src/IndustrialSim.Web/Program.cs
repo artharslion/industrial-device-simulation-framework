@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using IndustrialSim.Web.Health;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuredPath = builder.Configuration["IndustrialSim:DeviceConfig"]
@@ -69,6 +70,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     Predicate = registration => registration.Tags.Contains("ready"),
     ResponseWriter = HealthResponseWriter.WriteAsync
 }).AllowAnonymous();
+app.MapMetrics("/metrics", app.Services.GetRequiredService<CollectorRegistry>()).AllowAnonymous();
 app.MapOpenApi("/openapi/v1.json");
 app.MapIndustrialSimDeveloperConsole();
 
