@@ -1,7 +1,7 @@
 # Industrial Device Simulation Framework 与 ProtoForge 对比分析
 
 > 调研日期：2026-09-14
-> IndustrialSim 基线：`5e51b2e`
+> IndustrialSim 基线：`5fe021e`
 > ProtoForge 公共仓库基线：[`14b4e35`](https://github.com/suoten/ProtoForge/commit/14b4e3535a4d1787b88f7a11714e70e91e2bc821)，2026-04-24
 
 ## 1. 结论
@@ -41,7 +41,7 @@ IndustrialSim 的当前验证结果：
   容器以 `uid=1654(app)` 运行并创建 `/app/data/industrial-sim.db`，`/` 和
   `/api/runtime` 均可访问；
 - OPC UA、Modbus TCP 存在真实客户端及跨协议共享状态测试。
-- Wave 3.1 本地验收在 `5e51b2e` 后通过 207 个 .NET 测试、28 个 Vue/Vitest
+- Wave 3.1 本地验收在 `5fe021e` 后通过 208 个 .NET 测试、28 个 Vue/Vitest
   测试和 Vue production build；`RuntimeEventLogTests`、`RuntimeIsolationTests`、
   `HealthEndpointTests`、`PrometheusMetricsTests`、`TraceCorrelationTests` 和
   secret-redaction 测试覆盖有界事件、drop、health、metrics、trace correlation

@@ -201,12 +201,12 @@ public sealed class DocumentationContractTests
 
         Assert.Contains("| metrics: health, Prometheus, and tracing | Observability | 3 |", matrix, StringComparison.Ordinal);
         Assert.Contains("TraceRedactionTests`; source and Docker endpoint checks | Verified |", matrix, StringComparison.Ordinal);
-        Assert.Contains("Accepted on 2026-09-14 through `5e51b2e`", matrix, StringComparison.Ordinal);
-        Assert.Contains("207 .NET tests", matrix, StringComparison.Ordinal);
+        Assert.Contains("Accepted on 2026-09-14 through `5fe021e`", matrix, StringComparison.Ordinal);
+        Assert.Contains("208 .NET tests", matrix, StringComparison.Ordinal);
         Assert.Contains("Wave 3.1 Observability Gate 已关闭", comparison, StringComparison.Ordinal);
         Assert.DoesNotContain("尚未完成 liveness/readiness", comparison, StringComparison.Ordinal);
         Assert.Contains("Wave 3.2 User Testing", comparison, StringComparison.Ordinal);
-        Assert.Contains("sha256:947e3e2417a", implementationNotes, StringComparison.Ordinal);
+        Assert.Contains("sha256:a6ed5bc949db", implementationNotes, StringComparison.Ordinal);
         Assert.Contains("`/health/live`", readme, StringComparison.Ordinal);
         Assert.Contains("`/health/ready`", readme, StringComparison.Ordinal);
         Assert.Contains("`/metrics`", readme, StringComparison.Ordinal);

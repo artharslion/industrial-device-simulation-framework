@@ -21,8 +21,8 @@ image construction, and `/api/runtime` smoke. Manual release run
 [`34802093256`](https://github.com/artharslion/industrial-device-simulation-framework/actions/runs/34802093256)
 published Docker Hub tag `ci-smoke` with digest
 `sha256:3b90a83c8631e7e39828a47b26cd996c095c650a69a45bc648fada4ec113b790`.
-Wave 3.1 observability is verified through IndustrialSim commit `5e51b2e`.
-The local acceptance run passed 207 .NET tests and 28 Vue tests plus the Vue
+Wave 3.1 observability is verified through IndustrialSim commit `5fe021e`.
+The local acceptance run passed 208 .NET tests and 28 Vue tests plus the Vue
 production build. Source-host and newly built Docker image checks returned HTTP
 200 for `/health/live`, `/health/ready`, and `/metrics`; the Docker check omitted
 an explicit SQLite connection string and created the writable default database
@@ -119,7 +119,7 @@ correlate to retained events through OpenTelemetry trace IDs; secrets are
 redacted before retained or custom tracing surfaces; and blocked observation
 cannot delay deterministic ticks or stop real-time simulation.
 
-Accepted on 2026-09-14 through `5e51b2e`. `RuntimeEventLogTests` cover ordered
+Accepted on 2026-09-14 through `5fe021e`. `RuntimeEventLogTests` cover ordered
 retention, filtering, subscribers, concurrency, and drops. `RuntimeIsolationTests`
 cover blocked formatting and unread subscribers. `HealthEndpointTests` prove
 SQLite failure makes readiness return 503 while liveness remains 200 and a
@@ -130,9 +130,9 @@ SignalR drops. `TraceCorrelationTests` links the ASP.NET server span, the
 `industrial.state.write` span, and its retained event; `TraceRedactionTests`
 excludes raw credentials from custom tags.
 
-The full local acceptance run passed 207 .NET tests, 28 Vue tests, and the Vue
+The full local acceptance run passed 208 .NET tests, 28 Vue tests, and the Vue
 production build. A source-host run and local image `industrial-sim:wave31`
-(`sha256:947e3e2417a20bece803a86f4aa0b34f2d4895f857033cf57b698baee73ccc4c`)
+(`sha256:a6ed5bc949dbb09f9a55cd85e9eab55688f9b7abf412e77c7ec1618b6b0c2e69`)
 returned 200 for `/health/live`, `/health/ready`, and `/metrics`. The container
 was run without `ConnectionStrings__IndustrialSim`, used UID 1654, had a
 writable `/app/data`, and created `/app/data/industrial-sim.db`. This gate does

@@ -39,8 +39,8 @@
 
 ## Wave 3.1 observability verification environment
 
-- Reverified on 2026-09-14 (Asia/Shanghai) through commit `5e51b2e`.
-- The full Release test run passed 207 .NET tests. The Vue suite passed 28 tests
+- Reverified on 2026-09-14 (Asia/Shanghai) through commit `5fe021e`.
+- The full Release test run passed 208 .NET tests. The Vue suite passed 28 tests
   across 15 files, and `vue-tsc --noEmit && vite build` completed successfully.
 - `RuntimeEventLogTests` and `RuntimeIsolationTests` verify bounded retention,
   filters, subscribers, ingress/subscriber drop accounting, and that blocked
@@ -63,7 +63,7 @@
   `/health/live` and `/health/ready`; `/metrics` returned 200 and all seven
   metric families. Its temporary SQLite database was created successfully.
 - Docker Engine `29.2.1` built local image `industrial-sim:wave31` with image ID
-  `sha256:947e3e2417a20bece803a86f4aa0b34f2d4895f857033cf57b698baee73ccc4c`.
+  `sha256:a6ed5bc949dbb09f9a55cd85e9eab55688f9b7abf412e77c7ec1618b6b0c2e69`.
   Without an explicit SQLite connection string, the container returned HTTP
   200 for `/health/live`, `/health/ready`, and `/metrics`, ran as UID 1654, had
   writable `/app/data`, and created `/app/data/industrial-sim.db`.
