@@ -2,13 +2,56 @@ using System.Diagnostics;
 using System.Text.Json;
 using IndustrialSim.Core.Domain;
 using IndustrialSim.Faults;
+using IndustrialSim.Hosting;
 using IndustrialSim.Observability.Security;
 
 namespace IndustrialSim.Observability.Events;
 
-public sealed class RuntimeEventEnvelopeFactory(SecretRedactor redactor)
+public interface IRuntimeEventEnvelopeFactory
+{
+    RuntimeEventEnvelope Create(
+        object observation,
+        long sequence,
+        DateTimeOffset observedAtUtc,
+        ActivityContext? activityContext = null);
+}
+
+public sealed class RuntimeEventEnvelopeFactory(SecretRedactor redactor) : IRuntimeEventEnvelopeFactory
 {
     private readonly SecretRedactor _redactor = redactor ?? throw new ArgumentNullException(nameof(redactor));
+
+    public RuntimeEventEnvelope Create(
+        object observation,
+        long sequence,
+        DateTimeOffset observedAtUtc,
+        ActivityContext? activityContext = null) => observation switch
+        {
+            RuntimeEvent runtimeEvent => Create(runtimeEvent, sequence, observedAtUtc, activityContext),
+            FaultEvent faultEvent => Create(faultEvent, sequence, observedAtUtc, activityContext),
+            ScenarioActionObservation scenario => CreateObservation(
+                sequence,
+                observedAtUtc,
+                scenario.Timestamp.Elapsed,
+                scenario.DeviceId,
+                "ScenarioActionExecuted",
+                new { scenario = _redactor.RedactText(scenario.ScenarioName), action = scenario.Action },
+                activityContext: activityContext),
+            ProtocolLifecycleObservation protocol => CreateObservation(
+                sequence,
+                observedAtUtc,
+                protocol.Timestamp.Elapsed,
+                protocol.DeviceId,
+                protocol.Succeeded ? "ProtocolLifecycleChanged" : "ProtocolError",
+                new
+                {
+                    protocol = _redactor.RedactText(protocol.Protocol),
+                    operation = protocol.Operation,
+                    protocol.Succeeded,
+                    errorCode = _redactor.RedactText(protocol.ErrorCode)
+                },
+                activityContext: activityContext),
+            _ => throw new ArgumentException($"Observation type '{observation?.GetType().FullName ?? "null"}' is not supported.", nameof(observation))
+        };
 
     public RuntimeEventEnvelope Create(
         RuntimeEvent runtimeEvent,

@@ -50,9 +50,12 @@ public sealed record SimulationHostOptions(bool Deterministic = false, int Seed 
 
 public sealed class SimulationHost : IAsyncDisposable
 {
+    public const int EventRetentionCapacity = 1000;
+
     private readonly DeviceLaunchDefinition _launch;
     private readonly Dictionary<string, IProtocolAdapter> _protocols = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentQueue<object> _events = new();
+    private int _eventCount;
     private readonly Dictionary<string, DataFaultProcessor> _dataFaultProcessors = new(StringComparer.OrdinalIgnoreCase);
     private readonly DeviceFaultController _deviceFaultController;
     private readonly DeviceBehaviorDefinition? _behavior;
@@ -104,7 +107,7 @@ public sealed class SimulationHost : IAsyncDisposable
         Runtime = new InMemoryDeviceRuntime(configuration, state, commandHandlers, () => Engine.CurrentTime);
         FaultManager = new FaultManager(Engine);
         _deviceFaultController = new DeviceFaultController(Runtime.State);
-        Runtime.RuntimeEventPublished += @event => _events.Enqueue(@event);
+        Runtime.RuntimeEventPublished += RetainEvent;
         FaultManager.LifecycleChanged += OnFaultLifecycleChanged;
 
         if (launch.OpcUa is not null)
@@ -129,6 +132,8 @@ public sealed class SimulationHost : IAsyncDisposable
     public string? ActiveScenarioName { get; private set; }
     public IReadOnlyDictionary<string, IProtocolAdapter> Protocols => _protocols;
     public IReadOnlyCollection<object> Events => _events.ToArray();
+    public event Action<ScenarioActionObservation>? ScenarioActionObserved;
+    public event Action<ProtocolLifecycleObservation>? ProtocolLifecycleObserved;
     public bool IsRunning { get; private set; }
     public bool IsDeterministic => _options.Deterministic;
     public int Seed => _options.Seed;
@@ -136,6 +141,9 @@ public sealed class SimulationHost : IAsyncDisposable
     public DeviceLaunchDefinition LaunchDefinition => _launch;
     public IReadOnlyList<ProtocolPortBinding> PortBindings => _launch.PortBindings;
     public int WebPort => _launch.WebPort;
+    public long TotalTicks => Interlocked.Read(ref _totalTicks);
+
+    private long _totalTicks;
 
     public static Task<SimulationHost> LoadAsync(string path, CancellationToken cancellationToken = default) => LoadAsync(path, new SimulationHostOptions(), cancellationToken);
 
@@ -177,18 +185,27 @@ public sealed class SimulationHost : IAsyncDisposable
             foreach (var (name, protocol) in _protocols)
             {
                 started.Add(protocol);
-                switch (name)
+                try
                 {
-                    case "opcua":
-                        var endpoint = _launch.OpcUa!.Endpoint;
-                        var opcPort = Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && uri.Port > 0 ? uri.Port : 4840;
-                        await protocol.StartAsync(Runtime, new ProtocolOptions(endpoint, opcPort), cancellationToken);
-                        break;
-                    case "modbus":
-                        var modbusPort = _launch.Modbus!.Port;
-                        await protocol.StartAsync(Runtime, new ProtocolOptions(Port: modbusPort), cancellationToken);
-                        if (modbusPort == 0) await ((ModbusAdapter)protocol).StartServerAsync(0, cancellationToken);
-                        break;
+                    switch (name)
+                    {
+                        case "opcua":
+                            var endpoint = _launch.OpcUa!.Endpoint;
+                            var opcPort = Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && uri.Port > 0 ? uri.Port : 4840;
+                            await protocol.StartAsync(Runtime, new ProtocolOptions(endpoint, opcPort), cancellationToken);
+                            break;
+                        case "modbus":
+                            var modbusPort = _launch.Modbus!.Port;
+                            await protocol.StartAsync(Runtime, new ProtocolOptions(Port: modbusPort), cancellationToken);
+                            if (modbusPort == 0) await ((ModbusAdapter)protocol).StartServerAsync(0, cancellationToken);
+                            break;
+                    }
+                    ObserveProtocol(name, "start", true, null);
+                }
+                catch (Exception exception)
+                {
+                    ObserveProtocol(name, "start", false, exception.GetType().Name);
+                    throw;
                 }
             }
             IsRunning = true;
@@ -252,6 +269,11 @@ public sealed class SimulationHost : IAsyncDisposable
             State,
             command: (_, command) => Runtime.InvokeCommandAsync(command).GetAwaiter().GetResult(),
             faultAction: ScheduleScenarioFault);
+        runner.ActionExecuted += (action, timestamp) => ScenarioActionObserved?.Invoke(new ScenarioActionObservation(
+            Runtime.Definition.Id.Value,
+            scenario.Name,
+            ActionName(action),
+            timestamp));
         runner.Start();
         ScenarioRunner?.Stop();
         ActiveScenarioName = scenario.Name;
@@ -264,6 +286,7 @@ public sealed class SimulationHost : IAsyncDisposable
         if (Engine.State != EngineState.Running) return;
         Engine.Tick(amount);
         UpdateDeviceBehavior(amount);
+        Interlocked.Increment(ref _totalTicks);
     }
 
     public void Update() => Engine.Update();
@@ -325,8 +348,20 @@ public sealed class SimulationHost : IAsyncDisposable
             _loopTask = null;
         }
         var publishStopped = IsRunning;
-        foreach (var protocol in _protocols.Values.Reverse())
-            if (protocol.IsRunning) await protocol.StopAsync(cancellationToken);
+        foreach (var (name, protocol) in _protocols.Reverse())
+        {
+            if (!protocol.IsRunning) continue;
+            try
+            {
+                await protocol.StopAsync(cancellationToken);
+                ObserveProtocol(name, "stop", true, null);
+            }
+            catch (Exception exception)
+            {
+                ObserveProtocol(name, "stop", false, exception.GetType().Name);
+                throw;
+            }
+        }
         await Engine.StopAsync(cancellationToken);
         IsRunning = false;
         if (publishStopped) Runtime.Publish(new DeviceStopped(Engine.CurrentTime, Runtime.Definition.Id));
@@ -366,7 +401,7 @@ public sealed class SimulationHost : IAsyncDisposable
 
     private void OnFaultLifecycleChanged(FaultEvent change)
     {
-        _events.Enqueue(change);
+        RetainEvent(change);
         if (change.Lifecycle == FaultLifecycle.Active) ApplyFault(change.Fault);
         else if (change.Lifecycle == FaultLifecycle.Recovered) RecoverFaultEffect(change.Fault);
     }
@@ -474,6 +509,7 @@ public sealed class SimulationHost : IAsyncDisposable
                 Engine.Update();
                 UpdateDeviceBehavior(now - _lastBehaviorTime);
                 _lastBehaviorTime = now;
+                Interlocked.Increment(ref _totalTicks);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
@@ -486,6 +522,35 @@ public sealed class SimulationHost : IAsyncDisposable
         _motor?.Update(elapsed, Engine.CurrentTime);
         _sensor?.Update(elapsed, Engine.CurrentTime);
     }
+
+    private void RetainEvent(object @event)
+    {
+        _events.Enqueue(@event);
+        var count = Interlocked.Increment(ref _eventCount);
+        while (count > EventRetentionCapacity && _events.TryDequeue(out _))
+        {
+            count = Interlocked.Decrement(ref _eventCount);
+        }
+    }
+
+    private void ObserveProtocol(string protocol, string operation, bool succeeded, string? errorCode) =>
+        ProtocolLifecycleObserved?.Invoke(new ProtocolLifecycleObservation(
+            Runtime.Definition.Id.Value,
+            protocol,
+            operation,
+            succeeded,
+            errorCode,
+            Engine.CurrentTime));
+
+    private static string ActionName(ScenarioAction action) => action switch
+    {
+        SetAction => "set",
+        RampAction => "ramp",
+        CommandAction => "command",
+        WaitAction => "wait",
+        FaultAction => "fault",
+        _ => "unknown"
+    };
 
     private static bool CanAttachPump(DeviceDefinition definition)
     {
