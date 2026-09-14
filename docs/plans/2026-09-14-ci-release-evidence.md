@@ -10,6 +10,33 @@
 
 ---
 
+## Completion record
+
+Completed on 2026-09-14 at commit `9d480d2`.
+
+- GitHub Actions CI run
+  [`34801843690`](https://github.com/artharslion/industrial-device-simulation-framework/actions/runs/34801843690)
+  passed `Application and client checks` and `Container build and smoke`.
+- The validation covered 178 .NET tests, 28 Vue tests, the Vue production
+  build, `docker compose config`, Docker image construction, and an
+  `/api/runtime` container smoke request.
+- `WebApplicationFactoryTests` exercised the production `Program` composition
+  root through TestServer and covered device/state APIs, OpenAPI, security
+  headers, and RFC Problem Details.
+- Manual release run
+  [`34802093256`](https://github.com/artharslion/industrial-device-simulation-framework/actions/runs/34802093256)
+  passed verification and publication, producing Docker Hub tag `ci-smoke` at
+  digest
+  `sha256:3b90a83c8631e7e39828a47b26cd996c095c650a69a45bc648fada4ec113b790`.
+- The published image was manually rerun without an explicit SQLite connection
+  string. `/` and `/api/runtime` returned HTTP 200, and the non-root `app` user
+  created `/app/data/industrial-sim.db`.
+
+This closes the Wave 2.5 gate. It records an explicit manual publication, not
+a semantic-version release tag or additional protocol interoperability.
+
+---
+
 ### Task 1: Lock the release evidence contract in documentation tests
 
 **Files:**

@@ -12,11 +12,17 @@ Statuses are `Not Started`, `In Progress`, `Verified`, and `Constrained`.
 
 ## Current evidence snapshot
 
-The 2026-09-14 local release check passed 178 .NET tests, 28 Vue tests, the
-Vue production build, and `docker compose config`. ProtoForge remains at public
-commit `14b4e35`; its protocol breadth is treated as a public/static baseline,
-not as equivalent interoperability evidence. Continuous CI evidence is still
-required so that a locally verified row remains reproducible on every change.
+The 2026-09-14 release evidence gate is verified at IndustrialSim commit
+`9d480d2`. GitHub Actions CI run
+[`34801843690`](https://github.com/artharslion/industrial-device-simulation-framework/actions/runs/34801843690)
+passed its application/client and container build/smoke jobs, including 178
+.NET tests, 28 Vue tests, the production client build, Compose validation,
+image construction, and `/api/runtime` smoke. Manual release run
+[`34802093256`](https://github.com/artharslion/industrial-device-simulation-framework/actions/runs/34802093256)
+published Docker Hub tag `ci-smoke` with digest
+`sha256:3b90a83c8631e7e39828a47b26cd996c095c650a69a45bc648fada4ec113b790`.
+ProtoForge remains at public commit `14b4e35`; its protocol breadth is treated
+as a public/static baseline, not as equivalent interoperability evidence.
 
 ## Capability groups
 
@@ -37,7 +43,7 @@ required so that a locally verified row remains reproducible on every change.
 | Vue developer console | Web ClientApp | 1, 2 | Vitest, typecheck, production build, and desktop/mobile browser evidence | Verified |
 | OpenAPI and RFC Problem Details | Web | 1 | `V1ApiContractTests` and `AuthenticationTests` with stable `errorCode` values | Verified |
 | SignalR state and log streaming | Web / ClientApp | 1 | `RuntimeHubTests`, `useRuntimeSignalR.test.ts`, and polling-fallback tests | Verified |
-| release evidence: CI, server integration, container smoke, and image publication | Delivery | 2.5 | GitHub Actions checks, `WebApplicationFactory` tests, Docker smoke, and Docker Hub tag record | In Progress |
+| release evidence: CI, server integration, container smoke, and image publication | Delivery | 2.5 | GitHub Actions run `34801843690`, `WebApplicationFactoryTests`, container smoke, and Docker Hub run `34802093256` / `ci-smoke` digest | Verified |
 
 ## Protocol baseline
 
@@ -90,3 +96,10 @@ Docker configuration and image construction succeed; and tags or an explicit
 manual dispatch can publish an immutable image tag to Docker Hub. CI must not
 require Docker Hub credentials for pull requests, and publication credentials
 must be read only from GitHub Actions secrets.
+
+Accepted on 2026-09-14 at `9d480d2`. The repository has pull-request/push CI on
+`ubuntu-latest`; the successful push run executed the same two configured jobs.
+`WebApplicationFactoryTests` exercised the production composition root, the CI
+container smoke passed, and manual dispatch published the immutable `ci-smoke`
+digest recorded above. A formal semantic-version tag has not yet been cut and
+is not claimed as evidence here.

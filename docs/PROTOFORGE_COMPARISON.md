@@ -1,7 +1,7 @@
 # Industrial Device Simulation Framework 与 ProtoForge 对比分析
 
 > 调研日期：2026-09-14
-> IndustrialSim 基线：`afb8d8c`
+> IndustrialSim 基线：`9d480d2`
 > ProtoForge 公共仓库基线：[`14b4e35`](https://github.com/suoten/ProtoForge/commit/14b4e3535a4d1787b88f7a11714e70e91e2bc821)，2026-04-24
 
 ## 1. 结论
@@ -22,10 +22,24 @@ IndustrialSim 后续交付。
 
 IndustrialSim 的当前验证结果：
 
-- `dotnet test IndustrialSim.sln --configuration Release`：178 个测试通过；
-- Vue/Vitest：28 个测试通过；
-- Vue production build：通过；
-- `docker compose config`：通过；
+- GitHub Actions CI run
+  [`34801843690`](https://github.com/artharslion/industrial-device-simulation-framework/actions/runs/34801843690)
+  在 `9d480d2` 上通过，包含 `Application and client checks` 与
+  `Container build and smoke` 两个成功 job；
+- 该 CI run 执行了 178 个 .NET 测试、28 个 Vue/Vitest 测试、Vue production
+  build、`docker compose config`、Docker image build，并通过
+  `/api/runtime` 容器冒烟；
+- `WebApplicationFactoryTests` 通过 TestServer 执行正式 `Program`
+  composition root，覆盖 `/api/v1/devices`、runtime state、OpenAPI、security
+  headers 和 RFC Problem Details；
+- Docker Hub manual-dispatch run
+  [`34802093256`](https://github.com/artharslion/industrial-device-simulation-framework/actions/runs/34802093256)
+  成功发布 `industrialdevicesimulation/industrial-device-simulation-framework:ci-smoke`；
+- 发布镜像 digest 为
+  `sha256:3b90a83c8631e7e39828a47b26cd996c095c650a69a45bc648fada4ec113b790`，
+  OCI revision 指向 `9d480d2`；本地复验确认未提供 SQLite 连接字符串时，
+  容器以 `uid=1654(app)` 运行并创建 `/app/data/industrial-sim.db`，`/` 和
+  `/api/runtime` 均可访问；
 - OPC UA、Modbus TCP 存在真实客户端及跨协议共享状态测试。
 
 ProtoForge 的结论来自 README、项目结构和静态源码检查。本机没有安装
@@ -64,17 +78,13 @@ ProtoForge 的结论来自 README、项目结构和静态源码检查。本机�
 
 ### 5.1 发布证据和自动化门禁
 
-仓库当前没有 GitHub Actions workflow，也没有持续执行以下完整门禁：
+Wave 2.5 Release Evidence Gate 已关闭。仓库现在包含基于 GitHub-hosted
+`ubuntu-latest` runner 的 CI、正式 composition root 的服务器集成测试、Docker
+build/smoke，以及只在 tag 或手动 dispatch 时读取 Docker Hub secrets 的发布流程。
 
-- .NET build/test；
-- Vue test/typecheck/build；
-- Docker build 和容器启动冒烟；
-- 基于正式 `Program` composition root 的 HTTP integration tests；
-- tag 发布和可复现镜像产物。
-
-这是近期最高优先级，因为验收矩阵中的 `Verified` 应持续可复现，而不是只依赖
-某次本地运行。公开仓库应使用 GitHub-hosted standard Ubuntu runner，避免引入
-自托管 runner 的维护和安全成本。
+当前真实发布证据是手动 `ci-smoke` tag，而不是正式语义版本 release tag。后续正式
+版本仍应通过 `vX.Y.Z` tag 路径发布并保留对应 release record；这不影响 Wave 2.5
+对 CI、容器和显式手动发布能力的验收。
 
 ### 5.2 用户测试平台
 
@@ -107,14 +117,12 @@ IndustrialSim 也没有与 ProtoForge 49 个内置模板等量的 curated catalo
 
 ## 6. 当前优先级
 
-1. **Release Evidence Gate**：GitHub Actions、服务器 integration tests、Docker
-   build/smoke、tag/手动 Docker Hub 发布。
-2. **Wave 3.1 Observability**：结构化事件、health、metrics、tracing。
-3. **Wave 3.2/3.3 User Testing**：用例、套件、断言、报告和可解释 quick test。
-4. **Starter Template Pack**：先交付 8–12 个经过映射与行为验证的模板，不建设
+1. **Wave 3.1 Observability**：结构化事件、health、metrics、tracing。
+2. **Wave 3.2/3.3 User Testing**：用例、套件、断言、报告和可解释 quick test。
+3. **Starter Template Pack**：先交付 8–12 个经过映射与行为验证的模板，不建设
    marketplace。
-5. **Wave 3 Integrations**：Webhook、forwarding、语义录制回放、typed SDK。
-6. **Wave 4 Protocols**：按需求和互操作证据分批增加协议。
+4. **Wave 3 Integrations**：Webhook、forwarding、语义录制回放、typed SDK。
+5. **Wave 4 Protocols**：按需求和互操作证据分批增加协议。
 
 ## 7. 不应改变的架构决策
 
@@ -131,5 +139,5 @@ IndustrialSim 也没有与 ProtoForge 49 个内置模板等量的 curated catalo
 确定性地跨协议运行、故障、验证和恢复”衡量，IndustrialSim 已形成更清晰且更难
 替代的核心价值。
 
-下一阶段不应回到横向堆协议，而应先让现有能力在每个 PR、tag 和容器产物中持续
-可验证，再围绕确定性仿真构建用户测试和可观测性。
+下一阶段不应回到横向堆协议，而应在现有 Release Evidence Gate 上继续建设
+Wave 3.1 可观测性，再围绕确定性仿真构建用户测试能力。

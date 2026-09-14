@@ -133,11 +133,20 @@ public sealed class DocumentationContractTests
         var specification = File.ReadAllText(Path.Combine(root, "docs", "PROJECT_SPEC.md"));
         var matrix = File.ReadAllText(Path.Combine(root, "docs", "PROTOFORGE_BASELINE_MATRIX.md"));
         var comparison = File.ReadAllText(Path.Combine(root, "docs", "PROTOFORGE_COMPARISON.md"));
+        var releasePlan = File.ReadAllText(Path.Combine(root, "docs", "plans", "2026-09-14-ci-release-evidence.md"));
+        var implementationNotes = File.ReadAllText(Path.Combine(root, "docs", "IMPLEMENTATION_NOTES.md"));
 
         Assert.Contains("Wave 2.5: public-repository CI", specification, StringComparison.Ordinal);
         Assert.Contains("Microsoft.AspNetCore.Mvc.Testing", matrix, StringComparison.Ordinal);
         Assert.Contains("Docker Hub", matrix, StringComparison.Ordinal);
+        Assert.Contains("| release evidence: CI, server integration, container smoke, and image publication | Delivery | 2.5 |", matrix, StringComparison.Ordinal);
+        Assert.Contains("Docker Hub run `34802093256` / `ci-smoke` digest | Verified |", matrix, StringComparison.Ordinal);
         Assert.Contains("GitHub Actions", comparison, StringComparison.Ordinal);
+        Assert.DoesNotContain("仓库当前没有 GitHub Actions workflow", comparison, StringComparison.Ordinal);
+        Assert.Contains("34801843690", comparison, StringComparison.Ordinal);
+        Assert.Contains("34802093256", releasePlan, StringComparison.Ordinal);
+        Assert.Contains("sha256:3b90a83c8631", releasePlan, StringComparison.Ordinal);
+        Assert.Contains("Docker Desktop Linux daemon is available", implementationNotes, StringComparison.Ordinal);
         Assert.Contains("14b4e35", comparison, StringComparison.Ordinal);
     }
 
