@@ -10,7 +10,12 @@ public sealed class ContainerContractTests
         Assert.Contains("IndustrialSim.Web.csproj", dockerfile, StringComparison.Ordinal);
         Assert.Contains("EXPOSE 4840 5020 8080", dockerfile, StringComparison.Ordinal);
         Assert.Contains("INDUSTRIALSIM_DEVICE_CONFIG", dockerfile, StringComparison.Ordinal);
+        Assert.Contains("ConnectionStrings__IndustrialSim", dockerfile, StringComparison.Ordinal);
+        Assert.Contains("Data Source=/app/data/industrial-sim.db", dockerfile, StringComparison.Ordinal);
         Assert.Contains("IndustrialSim.Web.dll", dockerfile, StringComparison.Ordinal);
+
+        var ciWorkflow = File.ReadAllText(Path.Combine(root, ".github", "workflows", "ci.yml"));
+        Assert.DoesNotContain("--env 'ConnectionStrings__IndustrialSim", ciWorkflow, StringComparison.Ordinal);
 
         var compose = File.ReadAllText(Path.Combine(root, "docker-compose.yml"));
         Assert.Contains("4840:4840", compose, StringComparison.Ordinal);

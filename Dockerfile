@@ -20,6 +20,7 @@ COPY examples/scenarios /app/config/scenarios
 RUN mkdir -p /app/data && chown -R $APP_UID:$APP_UID /app/data
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
 ENV INDUSTRIALSIM_DEVICE_CONFIG=/app/config/device.yaml
+ENV ConnectionStrings__IndustrialSim="Data Source=/app/data/industrial-sim.db"
 EXPOSE 4840 5020 8080
 USER $APP_UID
 ENTRYPOINT ["dotnet", "IndustrialSim.Web.dll"]

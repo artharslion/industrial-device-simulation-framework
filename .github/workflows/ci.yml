@@ -92,7 +92,6 @@ jobs:
           trap cleanup EXIT
           docker run --detach --name industrial-sim-ci \
             --publish 18080:8080 \
-            --env 'ConnectionStrings__IndustrialSim=Data Source=/app/data/industrial-sim.db' \
             industrial-sim:ci
           for attempt in {1..30}; do
             if curl --fail --silent --show-error http://127.0.0.1:18080/api/runtime; then
