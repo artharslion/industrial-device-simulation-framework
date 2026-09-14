@@ -1,0 +1,126 @@
+name: Publish Docker image
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Optional Docker tag; defaults to manual-<short-sha>
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-publish-${{ github.ref }}-${{ inputs.image_tag || 'tag' }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify release source
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/IndustrialSim.Web/ClientApp/package-lock.json
+
+      - name: Restore .NET dependencies
+        run: dotnet restore IndustrialSim.sln
+
+      - name: Install client dependencies
+        working-directory: src/IndustrialSim.Web/ClientApp
+        run: npm ci
+
+      - name: Test and build client
+        working-directory: src/IndustrialSim.Web/ClientApp
+        run: |
+          npm test
+          npm run build
+
+      - name: Build and test .NET solution
+        run: |
+          dotnet build IndustrialSim.sln --configuration Release --no-restore -p:SkipClientBuild=true
+          dotnet test IndustrialSim.sln --configuration Release --no-build -p:SkipClientBuild=true
+
+  publish:
+    name: Build and publish
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/industrial-device-simulation-framework
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate release inputs
+        shell: bash
+        env:
+          MANUAL_TAG: ${{ inputs.image_tag }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$DOCKERHUB_USERNAME" || { echo 'DOCKERHUB_USERNAME secret is required.'; exit 1; }
+          test -n "$DOCKERHUB_TOKEN" || { echo 'DOCKERHUB_TOKEN secret is required.'; exit 1; }
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]] && [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag '$GITHUB_REF_NAME' is not a supported semantic release tag."
+            exit 1
+          fi
+          if [[ -n "$MANUAL_TAG" ]] && [[ ! "$MANUAL_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "Manual image tag '$MANUAL_TAG' is not a valid Docker tag."
+            exit 1
+          fi
+          if [[ "$MANUAL_TAG" == "latest" ]]; then
+            echo "Manual releases cannot move the 'latest' tag; create a stable vX.Y.Z Git tag instead."
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && !contains(github.ref_name, '-') }}
+            type=raw,value=${{ inputs.image_tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.image_tag != '' }}
+            type=sha,prefix=manual-,format=short,enable=${{ github.event_name == 'workflow_dispatch' && inputs.image_tag == '' }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
+          provenance: mode=max
+          sbom: true

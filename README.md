@@ -188,6 +188,28 @@ docker compose config
 
 The test suite covers the shared runtime state, deterministic scenarios, fault activation and recovery, real OPC UA and Modbus clients, HTTP contracts, persistence, authentication, and the Web console.
 
+## Continuous integration and Docker releases
+
+The public repository uses GitHub Actions with standard Ubuntu runners:
+
+- `.github/workflows/ci.yml` runs the .NET and Vue checks, validates Compose,
+  builds the Docker image, starts it, and verifies the HTTP runtime API.
+- `.github/workflows/docker-publish.yml` publishes release images to Docker Hub
+  for `v*` tags or an explicit manual workflow dispatch.
+
+Configure these repository Actions secrets before publishing:
+
+| Secret | Value |
+| --- | --- |
+| `DOCKERHUB_USERNAME` | Docker Hub account or organization name |
+| `DOCKERHUB_TOKEN` | Docker Hub access token with permission to push images |
+
+Create a public Docker Hub repository named
+`industrial-device-simulation-framework` under that account. A stable tag such
+as `v0.3.0` publishes `v0.3.0`, `0.3.0`, `0.3`, `0`, and `latest`. Prerelease
+tags do not move `latest`. Manual runs publish the requested tag, or
+`manual-<short-sha>` when no tag is provided, and never move `latest`.
+
 ## Scope
 
 The accepted v0.1 runtime includes YAML devices, Pump/Motor/Sensor models, deterministic simulation, scenarios, faults, OPC UA, Modbus TCP, CLI, Docker, and the developer Web UI. Post-v0.1 platform work adds the versioned control API, persistent catalogs, visual modeling workflows, and optional local identity while preserving the original runtime boundaries.
