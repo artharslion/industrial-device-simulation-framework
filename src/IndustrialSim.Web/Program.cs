@@ -27,6 +27,7 @@ if (overrides.LogLevel is { } configuredLogLevel)
 var simulation = await WebHostComposition.CreateAsync(configuredPath, builder.Environment.IsDevelopment(), new SimulationHostOptions(Overrides: overrides));
 if (string.IsNullOrWhiteSpace(builder.Configuration["urls"])) builder.WebHost.UseUrls($"http://0.0.0.0:{simulation.WebPort}");
 builder.Services.AddSingleton(simulation);
+builder.Services.AddIndustrialSimTracing(builder.Configuration);
 var registry = new SimulationRegistry();
 await registry.AddAsync(simulation);
 builder.Services.AddIndustrialSimControlPlane(

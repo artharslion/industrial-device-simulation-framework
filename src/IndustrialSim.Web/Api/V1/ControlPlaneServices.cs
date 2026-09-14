@@ -18,11 +18,41 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using IndustrialSim.Web.Health;
 using IndustrialSim.Observability.Metrics;
 using Prometheus;
+using IndustrialSim.Observability.Tracing;
+using OpenTelemetry;
+using OpenTelemetry.Trace;
 
 namespace IndustrialSim.Web.Api.V1;
 
 public static class ControlPlaneServices
 {
+    public static IServiceCollection AddIndustrialSimTracing(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        var otlpEndpoint = configuration["OpenTelemetry:Otlp:Endpoint"];
+        Uri? endpoint = null;
+        if (!string.IsNullOrWhiteSpace(otlpEndpoint) &&
+            (!Uri.TryCreate(otlpEndpoint, UriKind.Absolute, out endpoint) || endpoint.Scheme is not ("http" or "https")))
+            throw new ArgumentException("OpenTelemetry:Otlp:Endpoint must be an absolute HTTP or HTTPS URI.");
+
+        services.AddOpenTelemetry().WithTracing(tracing =>
+        {
+            tracing
+                .AddSource(IndustrialSimActivitySource.Name)
+                .AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation();
+            if (endpoint is not null)
+                tracing.AddOtlpExporter(options =>
+                {
+                    options.Endpoint = endpoint;
+                    options.ExportProcessorType = ExportProcessorType.Batch;
+                });
+        });
+        return services;
+    }
+
     public static IServiceCollection AddIndustrialSimControlPlane(
         this IServiceCollection services,
         SimulationRegistry registry,

@@ -13,6 +13,8 @@ using IndustrialSim.Observability.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
+using IndustrialSim.Observability.Security;
+using IndustrialSim.Observability.Tracing;
 
 namespace IndustrialSim.Web.Api.V1;
 
@@ -66,10 +68,7 @@ public static class V1Endpoints
         api.MapGet("/devices/{deviceId}/events", RuntimeEvents);
         api.MapGet("/devices/{deviceId}/faults", (string deviceId, ISimulationRegistry registry) => Results.Ok(registry.Get(deviceId).Host.FaultManager.ActiveFaults));
         api.MapPost("/devices/{deviceId}/faults", ActivateFault).RequireAuthorization(IndustrialPolicies.Operator);
-        api.MapPost("/devices/{deviceId}/faults/{faultId}/recover", (string deviceId, string faultId, ISimulationRegistry registry) =>
-            registry.Get(deviceId).Host.RecoverFault(faultId)
-                ? Results.Ok()
-                : IndustrialSimProblemDetails.Result(404, "Fault not found", $"Fault '{faultId}' is not active.", "faultNotFound"))
+        api.MapPost("/devices/{deviceId}/faults/{faultId}/recover", RecoverFault)
             .RequireAuthorization(IndustrialPolicies.Operator);
 
         api.MapGet("/protocols", (ISimulationRegistry registry) => Results.Ok(registry.List().Select(summary =>
@@ -92,10 +91,7 @@ public static class V1Endpoints
         api.MapDelete("/scenarios/{scenarioId}", RemoveScenarioAsync).RequireAuthorization(IndustrialPolicies.Operator);
         api.MapPost("/devices/{deviceId}/scenarios/{scenarioId}/start", StartScenarioAsync).RequireAuthorization(IndustrialPolicies.Operator);
         api.MapPost("/devices/{deviceId}/scenario", RunInlineScenarioAsync).RequireAuthorization(IndustrialPolicies.Operator);
-        api.MapDelete("/devices/{deviceId}/scenario", (string deviceId, ISimulationRegistry registry) =>
-            registry.Get(deviceId).Host.StopScenario()
-                ? Results.Ok(new { running = false })
-                : IndustrialSimProblemDetails.Result(404, "Scenario not running", "No scenario is running.", "scenarioNotRunning"))
+        api.MapDelete("/devices/{deviceId}/scenario", StopScenario)
             .RequireAuthorization(IndustrialPolicies.Operator);
 
         return endpoints;
@@ -106,15 +102,24 @@ public static class V1Endpoints
         ISimulationRegistry registry,
         IDeviceCatalogRepository repository,
         IndustrialSimDbContext db,
+        SecretRedactor redactor,
         CancellationToken cancellationToken)
     {
+        using var trace = IndustrialSimOperation.Start("industrial.device.create", redactor, request.Id);
         if (string.IsNullOrWhiteSpace(request.Id) || string.IsNullOrWhiteSpace(request.Type) || request.DataPoints.Count == 0)
+        {
+            trace.SetResult("rejected", "invalidDevice");
             return IndustrialSimProblemDetails.Result(400, "Validation failed", "Device id, type, and at least one data point are required.", "invalidDevice");
+        }
         var definition = DeviceLaunchRequestMapper.ToDefinition(request);
         if (definition.Behavior is not null)
         {
             try { BuiltInDeviceProfiles.Validate(definition, definition.Behavior); }
-            catch (ArgumentException exception) { return IndustrialSimProblemDetails.Result(400, "Invalid behavior profile", exception.Message, "invalidBehaviorProfile"); }
+            catch (ArgumentException exception)
+            {
+                trace.SetResult("rejected", "invalidBehaviorProfile");
+                return IndustrialSimProblemDetails.Result(400, "Invalid behavior profile", exception.Message, "invalidBehaviorProfile");
+            }
         }
         var launch = DeviceLaunchRequestMapper.ToLaunch(request);
         var handle = await registry.CreateAsync(launch, cancellationToken);
@@ -128,6 +133,7 @@ public static class V1Endpoints
             await registry.RemoveAsync(handle.DeviceId, CancellationToken.None);
             throw;
         }
+        trace.SetResult("success");
         return Results.Created($"/api/v1/devices/{request.Id}", Summary(handle));
     }
 
@@ -225,20 +231,35 @@ public static class V1Endpoints
         ISimulationRegistry registry,
         IDeviceCatalogRepository repository,
         IndustrialSimDbContext db,
+        SecretRedactor redactor,
         CancellationToken cancellationToken)
     {
+        using var trace = IndustrialSimOperation.Start("industrial.device.update", redactor, deviceId);
         if (!deviceId.Equals(request.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            trace.SetResult("rejected", "deviceIdMismatch");
             return IndustrialSimProblemDetails.Result(400, "Validation failed", "The request device id must match the route device id.", "deviceIdMismatch");
+        }
         if (registry.Get(deviceId).Host.IsRunning)
+        {
+            trace.SetResult("rejected", "deviceMustBeStopped");
             return IndustrialSimProblemDetails.Result(409, "Simulation conflict", $"Simulation '{deviceId}' must be stopped before its definition can be replaced.", "deviceMustBeStopped");
+        }
         if (request.DataPoints.Count == 0)
+        {
+            trace.SetResult("rejected", "invalidDevice");
             return IndustrialSimProblemDetails.Result(400, "Validation failed", "At least one data point is required.", "invalidDevice");
+        }
 
         var definition = DeviceLaunchRequestMapper.ToDefinition(request);
         if (definition.Behavior is not null)
         {
             try { BuiltInDeviceProfiles.Validate(definition, definition.Behavior); }
-            catch (ArgumentException exception) { return IndustrialSimProblemDetails.Result(400, "Invalid behavior profile", exception.Message, "invalidBehaviorProfile"); }
+            catch (ArgumentException exception)
+            {
+                trace.SetResult("rejected", "invalidBehaviorProfile");
+                return IndustrialSimProblemDetails.Result(400, "Invalid behavior profile", exception.Message, "invalidBehaviorProfile");
+            }
         }
         var launch = DeviceLaunchRequestMapper.ToLaunch(request);
         var item = new DeviceCatalogItem(request.Id, DeviceLaunchDocumentSerializer.Serialize(launch), "Stopped", request.Version);
@@ -247,6 +268,7 @@ public static class V1Endpoints
             await repository.UpsertAsync(item, token);
             await db.CommitAsync(token);
         }, cancellationToken);
+        trace.SetResult("success");
         return Results.Ok(await repository.FindAsync(handle.DeviceId, cancellationToken) is { } saved
             ? new { details = Summary(handle), version = saved.Version }
             : new { details = Summary(handle), version = request.Version + 1 });
@@ -257,12 +279,15 @@ public static class V1Endpoints
         ISimulationRegistry registry,
         IDeviceCatalogRepository repository,
         IndustrialSimDbContext db,
+        SecretRedactor redactor,
         CancellationToken cancellationToken)
     {
+        using var trace = IndustrialSimOperation.Start("industrial.device.remove", redactor, deviceId);
         registry.Get(deviceId);
         await repository.RemoveAsync(deviceId, cancellationToken);
         await db.CommitAsync(cancellationToken);
         await registry.RemoveAsync(deviceId, cancellationToken);
+        trace.SetResult("success");
         return Results.NoContent();
     }
 
@@ -272,8 +297,10 @@ public static class V1Endpoints
         ISimulationRegistry registry,
         IDeviceCatalogRepository repository,
         IndustrialSimDbContext db,
+        SecretRedactor redactor,
         CancellationToken cancellationToken)
     {
+        using var trace = IndustrialSimOperation.Start("industrial.device.lifecycle", redactor, deviceId, operation);
         if (operation.Equals("start", StringComparison.OrdinalIgnoreCase) || operation.Equals("stop", StringComparison.OrdinalIgnoreCase))
         {
             var desired = operation.Equals("start", StringComparison.OrdinalIgnoreCase) ? "Running" : "Stopped";
@@ -285,8 +312,11 @@ public static class V1Endpoints
             case "stop": await registry.StopAsync(deviceId, cancellationToken); break;
             case "pause": registry.Get(deviceId).Host.Engine.Pause(); break;
             case "reset": registry.Get(deviceId).Host.Reset(); break;
-            default: return IndustrialSimProblemDetails.Result(400, "Invalid operation", $"Lifecycle operation '{operation}' is not supported.", "invalidLifecycleOperation");
+            default:
+                trace.SetResult("rejected", "invalidLifecycleOperation");
+                return IndustrialSimProblemDetails.Result(400, "Invalid operation", $"Lifecycle operation '{operation}' is not supported.", "invalidLifecycleOperation");
         }
+        trace.SetResult("success");
         return Results.Ok(Runtime(registry.Get(deviceId).Host));
     }
 
@@ -331,18 +361,33 @@ public static class V1Endpoints
         return Results.Ok(new { time = host.Engine.CurrentTime.Elapsed });
     }
 
-    private static IResult WriteState(string deviceId, string dataPoint, JsonElement value, ISimulationRegistry registry)
+    private static IResult WriteState(
+        string deviceId,
+        string dataPoint,
+        JsonElement value,
+        ISimulationRegistry registry,
+        SecretRedactor redactor)
     {
+        using var trace = IndustrialSimOperation.Start("industrial.state.write", redactor, deviceId, "write");
         var result = registry.Get(deviceId).Host.Runtime.Write(dataPoint, JsonValue(value));
+        trace.SetResult(result.Succeeded ? "success" : "rejected", result.Succeeded ? null : "stateWriteRejected");
         return result.Succeeded
             ? Results.Ok(result)
             : IndustrialSimProblemDetails.Result(400, "State write rejected", result.Error ?? "State write was rejected.", "stateWriteRejected");
     }
 
-    private static IResult ActivateFault(string deviceId, FaultRequest request, ISimulationRegistry registry)
+    private static IResult ActivateFault(
+        string deviceId,
+        FaultRequest request,
+        ISimulationRegistry registry,
+        SecretRedactor redactor)
     {
+        using var trace = IndustrialSimOperation.Start("industrial.fault.activate", redactor, deviceId, "activate");
         if (!Enum.TryParse<FaultCategory>(request.Category, true, out var category))
+        {
+            trace.SetResult("rejected", "invalidFaultCategory");
             return IndustrialSimProblemDetails.Result(400, "Invalid fault", $"Unknown fault category '{request.Category}'.", "invalidFaultCategory");
+        }
         var host = registry.Get(deviceId).Host;
         var fault = new FaultSpec(
             string.IsNullOrWhiteSpace(request.Id) ? $"fault-{Guid.NewGuid():N}" : request.Id,
@@ -350,7 +395,24 @@ public static class V1Endpoints
             request.DurationSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null,
             request.Type, request.Metadata);
         host.ActivateFault(fault);
+        trace.SetResult("success");
         return Results.Accepted(value: fault);
+    }
+
+    private static IResult RecoverFault(
+        string deviceId,
+        string faultId,
+        ISimulationRegistry registry,
+        SecretRedactor redactor)
+    {
+        using var trace = IndustrialSimOperation.Start("industrial.fault.recover", redactor, deviceId, "recover");
+        if (registry.Get(deviceId).Host.RecoverFault(faultId))
+        {
+            trace.SetResult("success");
+            return Results.Ok();
+        }
+        trace.SetResult("rejected", "faultNotFound");
+        return IndustrialSimProblemDetails.Result(404, "Fault not found", $"Fault '{faultId}' is not active.", "faultNotFound");
     }
 
     private static async Task<IResult> UpsertScenarioAsync(
@@ -384,27 +446,51 @@ public static class V1Endpoints
         string scenarioId,
         ISimulationRegistry registry,
         IScenarioCatalogRepository repository,
+        SecretRedactor redactor,
         CancellationToken cancellationToken)
     {
+        using var trace = IndustrialSimOperation.Start("industrial.scenario.start", redactor, deviceId, "start");
         var scenario = await repository.FindAsync(scenarioId, cancellationToken);
         if (scenario is null)
+        {
+            trace.SetResult("rejected", "scenarioNotFound");
             return IndustrialSimProblemDetails.Result(404, "Scenario not found", $"Scenario '{scenarioId}' was not found.", "scenarioNotFound");
+        }
         var host = registry.Get(deviceId).Host;
         host.RunScenario(scenario.Yaml);
         host.Update();
+        trace.SetResult("success");
         return Results.Ok(new { scenario = host.ActiveScenarioName, running = true });
     }
 
     private static async Task<IResult> RunInlineScenarioAsync(
         string deviceId,
         HttpRequest request,
-        ISimulationRegistry registry)
+        ISimulationRegistry registry,
+        SecretRedactor redactor)
     {
+        using var trace = IndustrialSimOperation.Start("industrial.scenario.start", redactor, deviceId, "start");
         using var reader = new StreamReader(request.Body);
         var host = registry.Get(deviceId).Host;
         host.RunScenario(await reader.ReadToEndAsync());
         host.Update();
+        trace.SetResult("success");
         return Results.Ok(new { scenario = host.ActiveScenarioName, running = true });
+    }
+
+    private static IResult StopScenario(
+        string deviceId,
+        ISimulationRegistry registry,
+        SecretRedactor redactor)
+    {
+        using var trace = IndustrialSimOperation.Start("industrial.scenario.stop", redactor, deviceId, "stop");
+        if (registry.Get(deviceId).Host.StopScenario())
+        {
+            trace.SetResult("success");
+            return Results.Ok(new { running = false });
+        }
+        trace.SetResult("rejected", "scenarioNotRunning");
+        return IndustrialSimProblemDetails.Result(404, "Scenario not running", "No scenario is running.", "scenarioNotRunning");
     }
 
     private static DataPointDefinition ToDefinition(CreateDataPointRequest request)
