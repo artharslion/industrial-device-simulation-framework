@@ -15,3 +15,13 @@ public sealed record ProtocolLifecycleObservation(
     bool Succeeded,
     string? ErrorCode,
     SimulationTime Timestamp);
+
+public interface IProtocolOperationObserver
+{
+    IProtocolOperationScope Start(string deviceId, string protocol, string operation);
+}
+
+public interface IProtocolOperationScope : IDisposable
+{
+    void SetResult(bool succeeded, string? errorCode);
+}

@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using IndustrialSim.Faults;
 using IndustrialSim.Hosting;
 using IndustrialSim.Observability.Metrics;
+using IndustrialSim.Observability.Tracing;
 
 namespace IndustrialSim.Observability.Events;
 
@@ -14,6 +15,7 @@ public sealed class RuntimeEventLog : IAsyncDisposable
     private readonly IRuntimeEventEnvelopeFactory _factory;
     private readonly TimeProvider _timeProvider;
     private readonly IndustrialSimMetrics? _metrics;
+    private readonly IProtocolOperationObserver? _protocolOperationObserver;
     private readonly Channel<EventCandidate> _ingress;
     private readonly ConcurrentDictionary<Guid, Subscriber> _subscribers = new();
     private readonly Queue<RuntimeEventEnvelope> _retained = new();
@@ -33,12 +35,14 @@ public sealed class RuntimeEventLog : IAsyncDisposable
         RuntimeEventLogOptions options,
         IRuntimeEventEnvelopeFactory factory,
         TimeProvider timeProvider,
-        IndustrialSimMetrics? metrics = null)
+        IndustrialSimMetrics? metrics = null,
+        IProtocolOperationObserver? protocolOperationObserver = null)
     {
         _options = (options ?? throw new ArgumentNullException(nameof(options))).Validate();
         _factory = factory ?? throw new ArgumentNullException(nameof(factory));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _metrics = metrics;
+        _protocolOperationObserver = protocolOperationObserver;
         _ingress = Channel.CreateBounded<EventCandidate>(new BoundedChannelOptions(_options.IngressCapacity)
         {
             SingleReader = true,
@@ -142,6 +146,7 @@ public sealed class RuntimeEventLog : IAsyncDisposable
         host.FaultManager.LifecycleChanged += Enqueue;
         host.ScenarioActionObserved += Enqueue;
         host.ProtocolLifecycleObserved += Enqueue;
+        if (_protocolOperationObserver is not null) host.AttachProtocolOperationObserver(_protocolOperationObserver);
     }
 
     private void Enqueue(object observation)

@@ -67,6 +67,7 @@ public sealed class SimulationHost : IAsyncDisposable
     private Sensor? _sensor;
     private TimeSpan _lastBehaviorTime;
     private bool _disposed;
+    private IProtocolOperationObserver? _protocolOperationObserver;
 
     private SimulationHost(DeviceLaunchDefinition launch)
     {
@@ -145,6 +146,14 @@ public sealed class SimulationHost : IAsyncDisposable
 
     private long _totalTicks;
 
+    public void AttachProtocolOperationObserver(IProtocolOperationObserver observer)
+    {
+        ArgumentNullException.ThrowIfNull(observer);
+        var existing = Interlocked.CompareExchange(ref _protocolOperationObserver, observer, null);
+        if (existing is not null && !ReferenceEquals(existing, observer))
+            throw new InvalidOperationException("A simulation host can use only one protocol operation observer.");
+    }
+
     public static Task<SimulationHost> LoadAsync(string path, CancellationToken cancellationToken = default) => LoadAsync(path, new SimulationHostOptions(), cancellationToken);
 
     public static async Task<SimulationHost> LoadAsync(string path, SimulationHostOptions options, CancellationToken cancellationToken = default)
@@ -185,6 +194,7 @@ public sealed class SimulationHost : IAsyncDisposable
             foreach (var (name, protocol) in _protocols)
             {
                 started.Add(protocol);
+                using var operation = _protocolOperationObserver?.Start(Runtime.Definition.Id.Value, name, "start");
                 try
                 {
                     switch (name)
@@ -200,10 +210,12 @@ public sealed class SimulationHost : IAsyncDisposable
                             if (modbusPort == 0) await ((ModbusAdapter)protocol).StartServerAsync(0, cancellationToken);
                             break;
                     }
+                    operation?.SetResult(true, null);
                     ObserveProtocol(name, "start", true, null);
                 }
                 catch (Exception exception)
                 {
+                    operation?.SetResult(false, exception.GetType().Name);
                     ObserveProtocol(name, "start", false, exception.GetType().Name);
                     throw;
                 }
@@ -351,13 +363,16 @@ public sealed class SimulationHost : IAsyncDisposable
         foreach (var (name, protocol) in _protocols.Reverse())
         {
             if (!protocol.IsRunning) continue;
+            using var operation = _protocolOperationObserver?.Start(Runtime.Definition.Id.Value, name, "stop");
             try
             {
                 await protocol.StopAsync(cancellationToken);
+                operation?.SetResult(true, null);
                 ObserveProtocol(name, "stop", true, null);
             }
             catch (Exception exception)
             {
+                operation?.SetResult(false, exception.GetType().Name);
                 ObserveProtocol(name, "stop", false, exception.GetType().Name);
                 throw;
             }

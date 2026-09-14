@@ -76,6 +76,7 @@ public static class ControlPlaneServices
         services.AddSingleton<IRuntimeEventEnvelopeFactory, RuntimeEventEnvelopeFactory>();
         services.AddSingleton(_ => Prometheus.Metrics.NewCustomRegistry());
         services.AddSingleton<IndustrialSimMetrics>();
+        services.AddSingleton<IProtocolOperationObserver, ProtocolOperationObserver>();
         services.AddSingleton<RuntimeEventLog>();
         services.AddSingleton<IHostedService, RuntimeEventLogLifecycle>();
         services.AddSingleton(provider => new RuntimeStreamBroker(

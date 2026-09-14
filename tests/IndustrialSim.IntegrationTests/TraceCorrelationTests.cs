@@ -31,15 +31,20 @@ public sealed class TraceCorrelationTests
         Directory.CreateDirectory(directory);
         var yamlPath = Path.Combine(directory, "device.yaml");
         var databasePath = Path.Combine(directory, "industrial-sim.db");
-        await File.WriteAllTextAsync(yamlPath, """
+        var modbusPort = FreePort();
+        await File.WriteAllTextAsync(yamlPath, $$"""
             device:
               id: trace-device
               type: sensor
               datapoints:
-                value: { type: double, initial: 1, access: readwrite }
+                value: { type: int32, initial: 1, access: readwrite }
             protocols:
               opcua: { enabled: false }
-              modbus: { enabled: false }
+              modbus:
+                enabled: true
+                port: {{modbusPort}}
+                mappings:
+                  value: { holdingRegister: 0, type: int32, access: readwrite }
             web: { enabled: true, port: 8080 }
             """);
 
@@ -59,9 +64,13 @@ public sealed class TraceCorrelationTests
 
             Assert.Equal(
                 HttpStatusCode.OK,
-                (await client.PutAsJsonAsync("/api/v1/devices/trace-device/state/value", 2d)).StatusCode);
+                (await client.PutAsJsonAsync("/api/v1/devices/trace-device/state/value", 2)).StatusCode);
             var envelope = await WaitForEventAsync(client);
             await WaitUntilAsync(() => activities.Any(activity => activity.DisplayName == "industrial.state.write"));
+
+            Assert.Equal(HttpStatusCode.OK, (await client.PostAsync("/api/v1/devices/trace-device/stop", null)).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await client.PostAsync("/api/v1/devices/trace-device/start", null)).StatusCode);
+            await WaitUntilAsync(() => activities.Any(activity => activity.DisplayName == "industrial.protocol.stop"));
 
             var operation = Assert.Single(activities, activity => activity.DisplayName == "industrial.state.write");
             var server = Assert.Single(activities, activity =>
@@ -72,6 +81,14 @@ public sealed class TraceCorrelationTests
             Assert.Equal(operation.SpanId.ToHexString(), envelope.GetProperty("spanId").GetString());
             Assert.Equal(server.TraceId, operation.TraceId);
             Assert.DoesNotContain(operation.Tags, tag => tag.Key.Contains("value", StringComparison.OrdinalIgnoreCase));
+
+            var lifecycleSpans = activities.Where(activity => activity.DisplayName == "industrial.device.lifecycle").ToArray();
+            Assert.Contains(activities, activity =>
+                activity.DisplayName == "industrial.protocol.stop" &&
+                lifecycleSpans.Any(parent => parent.TraceId == activity.TraceId && parent.SpanId == activity.ParentSpanId));
+            Assert.Contains(activities, activity =>
+                activity.DisplayName == "industrial.protocol.start" &&
+                lifecycleSpans.Any(parent => parent.TraceId == activity.TraceId && parent.SpanId == activity.ParentSpanId));
         }
         finally
         {
@@ -96,6 +113,15 @@ public sealed class TraceCorrelationTests
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (!condition()) await Task.Delay(10, timeout.Token);
+    }
+
+    private static int FreePort()
+    {
+        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        return port;
     }
 
     private sealed class IndustrialSimWebFactory : WebApplicationFactory<WebApplicationMarker>
