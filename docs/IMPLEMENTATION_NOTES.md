@@ -71,3 +71,31 @@
   device state, and SQLite does not store the continuous event log or live
   datapoint stream. Secret redaction is evidenced for IndustrialSim-owned event
   and custom tracing surfaces, not every third-party library log.
+
+## Shared OPC UA endpoint hosting verification environment
+
+- Verified on 2026-09-15 (Asia/Shanghai) through implementation commit
+  `bf079b7` plus the final documentation worktree.
+- `dotnet restore IndustrialSim.sln` completed successfully. The Release build
+  completed with 0 warnings and 0 errors, and the full solution run passed 227
+  .NET tests across 13 test projects with no failures or skips.
+- Focused public-contract verification passed all 15 Configuration tests and
+  13 filtered Documentation/Container contract tests.
+- A separate repository OPC Foundation client acceptance rerun passed three
+  protocol tests covering one shared listener, isolated browse/read/write/
+  command routing, target-only Network Fault behavior, recovery from the
+  latest `StateStore` value, and last-member port release. The Web/Registry
+  end-to-end shared-endpoint test also passed and covered two API-created
+  devices, independent writes/stops, continued access to the remaining member,
+  and final port rebinding.
+- `docker compose config` and `git diff --check` passed. Docker Engine `29.2.1`
+  built `industrial-sim:shared-opcua` with image ID
+  `sha256:3137d0d28da9c4f66c2f50bf91de2c563595a4b23e14a9cb66be88850aa58d45`.
+  Compose continues to publish one OPC UA port (`4840`) for the process.
+- The repository client uses the OPC Foundation SDK and is acceptance evidence
+  for the implemented server behavior. No separate third-party GUI or client
+  was run, so broader third-party interoperability is not claimed.
+- Shared hosting does not change state ownership: every service routes to the
+  target runtime and its `StateStore`; SQLite still does not persist continuous
+  live state. OPC UA disconnect/timeout/latency behavior is device-scoped and
+  never stops the shared listener or simulation ticks.

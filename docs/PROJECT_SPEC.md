@@ -213,6 +213,47 @@ one failure leaves that device stopped and does not block other restores.
 `Paused` is runtime-only and restores stopped unless a future snapshot contract
 states otherwise.
 
+## 2.7 Shared OPC UA endpoint hosting
+
+Multiple simulations that configure the same normalized OPC UA endpoint share
+one process-level OPC UA server and TCP listener. Endpoint identity includes
+the `opc.tcp` scheme, bind host, port, and normalized path; it is not inferred
+from the port alone. This implementation rejects different hosts or paths on
+the same port because the current SDK host does not provide path-based virtual
+servers. OPC UA versus Modbus or Web listener collisions remain invalid.
+
+The shared server owns server-level certificate material, ApplicationUri,
+security policy, endpoint configuration, sessions, and address-space nodes. It
+does not own device live state. Every read, write, command, and notification is
+routed to the registered device runtime, whose `StateStore` remains the only
+live-state authority. SQLite does not persist the continuous OPC UA value
+stream.
+
+The shared browse hierarchy is:
+
+```text
+Objects/IndustrialSim/Devices/{deviceId}/
+  Metadata/
+  State/
+  Datapoints/
+  Commands/
+  Faults/
+```
+
+`DeviceDefinition.Id` is the stable simulation key. Existing datapoint NodeIds
+remain `${deviceId}/${datapoint}` unless an explicit mapping supplies another
+NodeId, and command method NodeIds remain `${deviceId}/${command}`. Custom
+NodeIds must be unique across all devices on the shared endpoint. Stopping or
+removing one member removes only its subtree; the first started member creates
+the listener and the last stopped member releases it.
+
+OPC UA Network Faults are device-scoped on a shared endpoint. `disconnect`
+returns `BadNotConnected` for services targeting only that device; `timeout`
+returns `BadTimeout`; and `latency` delays only that device's service. Faulted
+device notifications are suppressed for disconnect/timeout and refreshed from
+the latest `StateStore` value on recovery. The listener, other devices, and all
+simulation ticks continue.
+
 ---
 
 # 3. Non-Goals

@@ -1,6 +1,6 @@
 # Shared OPC UA Server Hosting Design
 
-**Status:** Approved for implementation on 2026-09-15
+**Status:** Completed and verified on 2026-09-15
 
 ## Context and requirements
 
@@ -262,4 +262,3 @@ Final verification includes all .NET tests, documentation contracts,
 when the daemon is available, and a manual two-device listener/browse/write/
 fault/stop check using the repository OPC UA client code. Third-party client
 interoperability is not claimed unless separately executed and recorded.
-

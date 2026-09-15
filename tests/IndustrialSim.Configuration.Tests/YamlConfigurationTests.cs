@@ -92,6 +92,19 @@ protocols:
     }
 
     [Fact]
+    public void Shared_opcua_examples_keep_the_existing_yaml_contract()
+    {
+        var root = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..");
+        var pump = new YamlConfigurationLoader().Load(File.ReadAllText(Path.Combine(root, "examples", "devices", "pump-shared-opcua.yaml")));
+        var sensor = new YamlConfigurationLoader().Load(File.ReadAllText(Path.Combine(root, "examples", "devices", "sensor-shared-opcua.yaml")));
+
+        Assert.Equal("pump-shared", pump.Device.Id.Value);
+        Assert.Equal("sensor-shared", sensor.Device.Id.Value);
+        Assert.Equal("opc.tcp://0.0.0.0:4840", pump.Configuration.Protocols!.Opcua!.Endpoint);
+        Assert.Equal(pump.Configuration.Protocols.Opcua.Endpoint, sensor.Configuration.Protocols!.Opcua!.Endpoint);
+    }
+
+    [Fact]
     public void Validates_modbus_numeric_widths_orders_and_access_contracts()
     {
         var valid = new ModbusConfiguration

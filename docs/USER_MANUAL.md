@@ -59,9 +59,9 @@ Custom creates an explicit `none` behavior profile. It has no periodic built-in 
 Protocol selection is explicit:
 
 - If neither protocol is enabled, the device is created without a network adapter. Merely creating the device does not expose it to an OPC UA or Modbus client.
-- Enabling OPC UA creates a real server when the device starts. Unless a template mapping profile overrides it, datapoints use `${deviceId}/${datapoint}` NodeIds and commands use `${deviceId}/${command}` method NodeIds.
+- Enabling OPC UA registers the device with a real server when the device starts. Compatible devices using the same normalized shared OPC UA endpoint reuse one listener and appear under `Objects/IndustrialSim/Devices/{deviceId}`. Unless a template mapping profile overrides it, datapoints use `${deviceId}/${datapoint}` NodeIds and commands use `${deviceId}/${command}` method NodeIds.
 - Enabling Modbus requires mappings. For each exposed datapoint, the Quick Create editor captures the address area, zero-based address, and wire datatype, and applies its defined access/byte-order/word-order defaults. The API and persisted launch definition carry all of those mapping fields explicitly. The console rejects an enabled Modbus port with no mapping instead of treating the port as a configured protocol.
-- Protocol ports must be unique across registered devices, including stopped devices, because the registry reserves the configured launch ports.
+- Modbus and incompatible listener ports must be unique across registered devices. Identical normalized OPC UA endpoints may share one reserved listener owner; custom NodeIds must still be unique within that endpoint.
 
 This is the quickest path for an experiment. Its launch definition is saved in the SQLite device catalog, while its live datapoint values remain in its in-memory `StateStore`. Use a template when the model itself should be reusable.
 
@@ -192,7 +192,7 @@ Advance the deterministic clock past 30 seconds, then confirm the fault appears 
 
 Next, use `examples/scenarios/network-timeout.yaml` to apply an OPC UA timeout. Advance past 60 seconds to activate it and past its duration to observe recovery.
 
-Important: a Network Fault affects the selected protocol boundary. It does not automatically stop device simulation or the other protocol adapter. This lets you verify, for example, that OPC UA fails while Modbus and the device runtime continue.
+Important: a Network Fault affects the selected protocol boundary. It does not automatically stop device simulation or the other protocol adapter. On a shared OPC UA endpoint, disconnect and timeout return device-scoped bad status and suppress only that device's notifications; other devices and the listener remain available. Recovery publishes the target device's latest runtime state.
 
 ## Step 7: Verify the device through OPC UA or Modbus
 

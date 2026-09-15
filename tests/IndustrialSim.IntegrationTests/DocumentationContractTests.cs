@@ -283,4 +283,27 @@ public sealed class DocumentationContractTests
         Assert.Contains("Rollback", plan, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("third-party OPC UA interoperability", plan, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void Public_documentation_defines_shared_opcua_endpoint_hosting_and_evidence_limits()
+    {
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var specification = File.ReadAllText(Path.Combine(root, "docs", "PROJECT_SPEC.md"));
+        var readme = File.ReadAllText(Path.Combine(root, "README.md"));
+        var startup = File.ReadAllText(Path.Combine(root, "docs", "STARTUP_GUIDE.md"));
+        var manual = File.ReadAllText(Path.Combine(root, "docs", "USER_MANUAL.md"));
+        var matrix = File.ReadAllText(Path.Combine(root, "docs", "PROTOFORGE_BASELINE_MATRIX.md"));
+
+        foreach (var document in new[] { specification, readme, startup, manual })
+            Assert.Contains("shared OPC UA", document, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Contains("Objects/IndustrialSim/Devices", specification, StringComparison.Ordinal);
+        Assert.Contains("BadNotConnected", specification, StringComparison.Ordinal);
+        Assert.Contains("BadTimeout", specification, StringComparison.Ordinal);
+        Assert.Contains("ApplicationUri", specification, StringComparison.Ordinal);
+        Assert.Contains("one OPC UA port", readme, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("must reserve unique protocol ports", startup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("shared endpoint", matrix, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("repository OPC Foundation client", matrix, StringComparison.OrdinalIgnoreCase);
+    }
 }

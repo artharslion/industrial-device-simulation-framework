@@ -30,6 +30,13 @@ as UID 1654. The scrape exposed all seven contracted metric families.
 ProtoForge remains at public commit `14b4e35`; its protocol breadth is treated
 as a public/static baseline, not as equivalent interoperability evidence.
 
+Shared OPC UA endpoint hosting is locally verified on 2026-09-15. Compatible
+devices reuse one normalized endpoint host and listener while retaining
+device-scoped address-space routing, subscriptions, lifecycle, and Network
+Fault behavior. The evidence uses the repository OPC Foundation client in
+protocol and end-to-end tests; no separate third-party GUI/client
+interoperability run is claimed.
+
 ## Capability groups
 
 | Capability | Owner module | Target wave | Acceptance evidence | Status |
@@ -57,7 +64,7 @@ as a public/static baseline, not as equivalent interoperability evidence.
 |---|---|---:|---|---|
 | Modbus TCP | Protocols.Modbus | v0.1 / 1 | Existing wire tests plus `/api/v1/protocols` status | Verified |
 | Modbus RTU | Protocols.ModbusRtu | 4 | CRC/framing and external-client record | Not Started |
-| OPC UA | Protocols.OpcUa | v0.1 / 1 | Existing external-client tests plus `/api/v1/protocols` status | Verified |
+| OPC UA | Protocols.OpcUa | v0.1 / 1 | Repository OPC Foundation client tests cover single-device and shared endpoint browse/read/write/command/subscription/removal/fault isolation; `/api/v1/protocols` status | Verified |
 | MQTT | Protocols.Mqtt | 4 | Publish/subscribe, QoS, retained state, reconnect tests | Not Started |
 | HTTP | Protocols.Http | 4 | OpenAPI-described external-client tests | Not Started |
 | GB28181 | Protocols.Gb28181 | 4 | Feasibility record and verified SIP subset | Not Started |

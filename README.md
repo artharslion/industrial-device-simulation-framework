@@ -11,6 +11,7 @@ One logical device is owned by one runtime `StateStore` and can be observed thro
 - Define Pump, Motor, Sensor, or custom devices in YAML.
 - Run simulations in real time or with a deterministic clock and seed.
 - Expose the same logical state through OPC UA and Modbus TCP.
+- Host several devices behind one shared OPC UA endpoint and one OPC UA port.
 - Create and run `set`, `ramp`, `command`, `wait`, and `fault` scenario steps.
 - Inject Data, Device, and Network Faults and observe their lifecycle.
 - Operate devices from a multi-page Web console.
@@ -36,6 +37,14 @@ The Compose stack starts the example Pump with:
 | Web console and API | `http://localhost:8080` |
 | OPC UA | `opc.tcp://localhost:4840` |
 | Modbus TCP | `localhost:5020` |
+
+Compatible devices configured with the same normalized shared OPC UA endpoint
+reuse the listener. They appear under
+`Objects/IndustrialSim/Devices/{deviceId}`; reads, writes, commands,
+subscriptions, and Network Fault status remain device-scoped. The existing
+YAML `protocols.opcua.endpoint` contract is unchanged. See
+`examples/devices/pump-shared-opcua.yaml` and
+`examples/devices/sensor-shared-opcua.yaml`.
 
 In the console:
 

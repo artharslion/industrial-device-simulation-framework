@@ -139,6 +139,14 @@ dotnet run --project src/IndustrialSim.Cli -- scenario run examples/scenarios/st
 | Web 端口 | `--web-port` | `INDUSTRIALSIM_WEB_PORT` |
 | 日志级别 | `--log-level` | `INDUSTRIALSIM_LOG_LEVEL` |
 
+## 共享 OPC UA endpoint
+
+同一个 Web 进程中的多台设备可以配置相同的规范化 shared OPC UA endpoint，
+例如 `opc.tcp://0.0.0.0:4840`。第一台运行设备打开 listener，后续设备加入
+`Objects/IndustrialSim/Devices`，最后一台运行设备停止后释放端口。Docker 只需
+发布一个 OPC UA 端口即可暴露这些兼容成员。同一端口上的不同 OPC UA host/path，
+以及 OPC UA 与 Modbus/Web 的冲突仍会被拒绝。
+
 示例：
 
 ```powershell
@@ -191,7 +199,7 @@ Docker Compose 将 `/app/data/industrial-sim.db` 保存在命名卷中。模板�
 
 ### 端口已被占用
 
-停止占用端口的进程，或覆盖 OPC UA、Modbus、Web 端口。同一 Web 主机中的多个设备必须预留不同的协议端口。
+停止外部占用端口的进程，或覆盖 OPC UA、Modbus、Web 端口。多台设备只能共享完全相同的规范化 OPC UA endpoint；其他 listener 冲突仍然无效。
 
 ### 容器已经启动，但浏览器无法访问
 

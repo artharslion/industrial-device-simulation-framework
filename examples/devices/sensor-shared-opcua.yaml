@@ -1,0 +1,18 @@
+device:
+  id: sensor-shared
+  type: sensor
+  name: Shared OPC UA Sensor
+  datapoints:
+    value: { type: double, initial: 0, access: readwrite }
+    quality: { type: string, initial: Good, access: read }
+  commands:
+    reset:
+  behavior:
+    profile: sensor
+    parameters:
+      ratePerSecond: 1
+protocols:
+  opcua:
+    enabled: true
+    endpoint: "opc.tcp://0.0.0.0:4840"
+

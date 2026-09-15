@@ -59,9 +59,9 @@ Custom 会显式创建 `none` 行为 profile，不包含周期性的内置行为
 协议必须显式配置：
 
 - 如果没有启用任何协议，设备会以无网络适配器的方式创建。创建设备本身不会使 OPC UA 或 Modbus 客户端能够访问它。
-- 启用 OPC UA 后，设备启动时会创建真实 OPC UA Server。如果没有由模板 mapping profile 覆盖，数据点 NodeId 使用 `${deviceId}/${datapoint}`，命令 Method NodeId 使用 `${deviceId}/${command}`。
+- 启用 OPC UA 后，设备启动时会注册到真实 OPC UA Server。使用相同规范化 shared OPC UA endpoint 的兼容设备复用一个 listener，并显示在 `Objects/IndustrialSim/Devices/{deviceId}` 下。如果没有由模板 mapping profile 覆盖，数据点 NodeId 使用 `${deviceId}/${datapoint}`，命令 Method NodeId 使用 `${deviceId}/${command}`。
 - 启用 Modbus 时必须提供映射。Quick Create 编辑器会为每个需要暴露的数据点采集地址区域、零基地址和线上的数据类型，并应用已定义的访问模式、字节序和字序默认值；API 和持久化启动定义会显式携带全部 mapping 字段。只填写 Modbus 端口但没有 mapping 会被拒绝，不会被伪装成已经配置协议。
-- 所有已注册设备的协议端口必须唯一。即使设备处于 stopped 状态，Registry 仍会为其保留启动端口。
+- Modbus 和不兼容的 listener 端口在已注册设备之间必须唯一。完全相同的规范化 OPC UA endpoint 可以共享一个预留 listener owner，但该 endpoint 内的自定义 NodeId 仍必须唯一。
 
 这种方式适合快速实验。设备启动定义会保存在 SQLite Device Catalog 中，而实时数据点仍保存在该设备内存中的 `StateStore`。如果设备模型本身需要复用，应使用模板。
 
@@ -192,7 +192,7 @@ examples/scenarios/overheating.yaml
 
 接下来使用 `examples/scenarios/network-timeout.yaml` 对 OPC UA 注入超时。推进到 60 秒之后观察故障激活，再推进超过故障持续时间，观察故障恢复。
 
-注意：Network Fault 只影响指定的协议边界，不会自动停止设备仿真或其他协议适配器。因此可以验证 OPC UA 失败时，Modbus 和设备运行时仍然继续工作。
+注意：Network Fault 只影响指定的协议边界，不会自动停止设备仿真或其他协议适配器。在 shared OPC UA endpoint 下，disconnect 和 timeout 只为目标设备返回 bad status 并抑制该设备通知；其他设备和 listener 仍可用。恢复时会发布目标设备最新的运行时状态。
 
 ## 第七步：通过 OPC UA 或 Modbus 验证设备
 

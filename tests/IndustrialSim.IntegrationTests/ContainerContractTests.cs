@@ -19,6 +19,7 @@ public sealed class ContainerContractTests
 
         var compose = File.ReadAllText(Path.Combine(root, "docker-compose.yml"));
         Assert.Contains("4840:4840", compose, StringComparison.Ordinal);
+        Assert.Equal(1, compose.Split("4840:4840", StringSplitOptions.None).Length - 1);
         Assert.Contains("5020:5020", compose, StringComparison.Ordinal);
         Assert.Contains("8080:8080", compose, StringComparison.Ordinal);
         Assert.Contains("./examples/devices/pump.yaml:/app/config/device.yaml:ro", compose, StringComparison.Ordinal);

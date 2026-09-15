@@ -1,0 +1,27 @@
+device:
+  id: pump-shared
+  type: pump
+  name: Shared OPC UA Pump
+  datapoints:
+    temperature: { type: double, unit: "°C", initial: 25, access: read }
+    pressure: { type: double, unit: "bar", initial: 0, access: read }
+    speed: { type: int32, unit: "rpm", initial: 0, access: readwrite }
+    running: { type: boolean, initial: false, access: read }
+    alarm: { type: boolean, initial: false, access: read }
+  commands:
+    start:
+    stop:
+  behavior:
+    profile: pump
+    parameters:
+      ratedSpeed: 1450
+      accelerationSeconds: 10
+      maxPressure: 3.2
+      heatingRatePerSecond: 0.5
+      coolingRatePerSecond: 0.2
+      overheatTemperature: 90
+protocols:
+  opcua:
+    enabled: true
+    endpoint: "opc.tcp://0.0.0.0:4840"
+

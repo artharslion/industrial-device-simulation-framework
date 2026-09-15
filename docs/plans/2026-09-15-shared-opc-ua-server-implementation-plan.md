@@ -2,6 +2,11 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+**Status:** Completed and verified on 2026-09-15. All five implementation
+tasks were committed separately; the final solution run passed 227 .NET tests,
+and the Docker image plus repository OPC Foundation client acceptance checks
+completed successfully. No separate third-party client run is claimed.
+
 **Goal:** Allow multiple simulations with compatible normalized OPC UA endpoints to share one process-level server/listener while preserving per-device `StateStore` authority, routing, subscriptions, lifecycle rollback, and Network Fault isolation.
 
 **Architecture:** Add an endpoint-keyed server manager to `IndustrialSim.Protocols.OpcUa`, convert the OPC UA server NodeManager from one fixed runtime to dynamic device projections, inject the manager into `SimulationHost`, and teach `SimulationRegistry` that one compatible OPC UA endpoint is one listener owner. Keep the existing YAML and launch-document contracts; all reads, writes, commands, and notifications continue to route through each device's existing runtime.
@@ -518,4 +523,3 @@ returning to distinct device endpoints/ports before reverting Tasks 2-4.
 - Identify remaining concurrency, SDK, certificate, or operational risks.
 - Recommend merge only if the worktree is clean and all required supported
   checks are green.
-

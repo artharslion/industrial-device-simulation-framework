@@ -41,6 +41,10 @@ IndustrialSim 的当前验证结果：
   容器以 `uid=1654(app)` 运行并创建 `/app/data/industrial-sim.db`，`/` 和
   `/api/runtime` 均可访问；
 - OPC UA、Modbus TCP 存在真实客户端及跨协议共享状态测试。
+- OPC UA 共享 endpoint 已由仓库内 OPC Foundation client 测试验证：一个
+  listener 可承载多台设备，各设备的 browse/read/write/command/subscription、
+  停止和 Network Fault 相互隔离；这不是独立第三方 GUI/client 互操作记录，
+  因而不据此扩大互操作声明。
 - Wave 3.1 本地验收在 `5fe021e` 后通过 208 个 .NET 测试、28 个 Vue/Vitest
   测试和 Vue production build；`RuntimeEventLogTests`、`RuntimeIsolationTests`、
   `HealthEndpointTests`、`PrometheusMetricsTests`、`TraceCorrelationTests` 和
@@ -72,7 +76,7 @@ ProtoForge 的结论来自 README、项目结构和静态源码检查。本机�
 |---|---|---|
 | 确定性运行时 | IndustrialSim 领先 | 可注入时钟、seed、显式 tick 和确定性 Scenario 测试 |
 | 统一状态所有权 | IndustrialSim 领先 | Core 不包含协议地址；所有协议观察同一 `StateStore` |
-| 跨协议一致性 | IndustrialSim 领先 | 同一设备同时通过 OPC UA、Modbus TCP、HTTP 和 Web 观察 |
+| 跨协议一致性 | IndustrialSim 领先 | 同一设备同时通过 OPC UA、Modbus TCP、HTTP 和 Web 观察；兼容设备还可共享一个 OPC UA listener 而不共享状态所有权 |
 | 故障模型 | IndustrialSim 领先 | Data、Device、Network Fault 生命周期和隔离测试 |
 | 多设备生命周期 | 已追平 | `SimulationRegistry`、批量操作、目录恢复和失败隔离 |
 | 持久化控制面 | 已追平 | SQLite 保存定义、模板、场景、设置、用户和版本化启动文档 |

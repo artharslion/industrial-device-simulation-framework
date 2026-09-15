@@ -139,6 +139,15 @@ Host configuration precedence is command-line option, environment variable, YAML
 | Web port | `--web-port` | `INDUSTRIALSIM_WEB_PORT` |
 | Log level | `--log-level` | `INDUSTRIALSIM_LOG_LEVEL` |
 
+## Shared OPC UA endpoints
+
+Devices in the same Web process may configure the same normalized shared OPC
+UA endpoint, for example `opc.tcp://0.0.0.0:4840`. The first running device
+opens the listener, later devices join `Objects/IndustrialSim/Devices`, and the
+last running device releases the port. One published Docker port is sufficient
+for all compatible members. Different OPC UA hosts or paths on the same port,
+and OPC UA/Modbus/Web collisions, are rejected.
+
 Example:
 
 ```powershell
@@ -191,7 +200,7 @@ Set the variable to an existing device YAML file. The fallback device is availab
 
 ### A port is already in use
 
-Stop the process using the port or override the OPC UA, Modbus, or Web port. Multiple devices in one Web host must reserve unique protocol ports.
+Stop the external process using the port or override the OPC UA, Modbus, or Web port. Multiple devices may share only an identical normalized OPC UA endpoint; other listener conflicts remain invalid.
 
 ### The container starts but the browser cannot connect
 
