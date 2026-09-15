@@ -79,6 +79,124 @@ public class ProtocolContractTests
     }
 
     [Fact]
+    public async Task Shared_endpoint_exposes_and_routes_two_devices_without_state_cross_talk()
+    {
+        await using var manager = new OpcUaEndpointHostManager();
+        var port = GetFreePort();
+        var endpoint = $"opc.tcp://127.0.0.1:{port}";
+        var runtimeA = Runtime("device-a", 1);
+        var runtimeB = Runtime("device-b", 2);
+        var first = new OpcUaAdapter(manager);
+        var second = new OpcUaAdapter(manager);
+        await first.StartAsync(runtimeA, new ProtocolOptions(endpoint, port));
+        await second.StartAsync(runtimeB, new ProtocolOptions(endpoint, port));
+
+        var config = await CreateClientConfigurationAsync();
+        using var session = await CreateSessionAsync(config, port);
+        var devices = await session.FetchReferencesAsync(new NodeId("industrial-sim/devices", 2), CancellationToken.None);
+        Assert.Contains(devices, reference => reference.BrowseName.Name == "device-a");
+        Assert.Contains(devices, reference => reference.BrowseName.Name == "device-b");
+        var firstReferences = await session.FetchReferencesAsync(new NodeId("device-a", 2), CancellationToken.None);
+        Assert.Contains(firstReferences, reference => reference.BrowseName.Name == "speed");
+
+        var speedA = new NodeId("device-a/speed", 2);
+        var speedB = new NodeId("device-b/speed", 2);
+        Assert.Equal(1, Convert.ToInt32((await session.ReadValueAsync(speedA)).Value));
+        Assert.Equal(2, Convert.ToInt32((await session.ReadValueAsync(speedB)).Value));
+        var write = await session.WriteAsync(null, new WriteValueCollection
+        {
+            new() { NodeId = speedA, AttributeId = Attributes.Value, Value = new DataValue(new Variant(11)) }
+        }, CancellationToken.None);
+        Assert.True(StatusCode.IsGood(write.Results[0]));
+        Assert.Equal(11, runtimeA.Read("speed")!.Value);
+        Assert.Equal(2, runtimeB.Read("speed")!.Value);
+
+        await session.CallAsync(new NodeId("device-a", 2), new NodeId("device-a/start", 2), CancellationToken.None);
+        Assert.Equal(1, runtimeA.CommandsInvoked);
+        Assert.Equal(0, runtimeB.CommandsInvoked);
+
+        await first.StopAsync();
+        var removed = await Assert.ThrowsAsync<ServiceResultException>(() => session.ReadValueAsync(speedA));
+        Assert.Equal(StatusCodes.BadNodeIdUnknown, removed.StatusCode);
+        Assert.Equal(2, Convert.ToInt32((await session.ReadValueAsync(speedB)).Value));
+        await second.StopAsync();
+    }
+
+    [Fact]
+    public async Task Shared_endpoint_rejects_node_id_collisions_without_removing_existing_device()
+    {
+        await using var manager = new OpcUaEndpointHostManager();
+        var port = GetFreePort();
+        var endpoint = $"opc.tcp://127.0.0.1:{port}";
+        var first = new OpcUaAdapter(manager);
+        first.Configure(new Dictionary<string, string> { ["speed"] = "shared/speed" });
+        var second = new OpcUaAdapter(manager);
+        second.Configure(new Dictionary<string, string> { ["speed"] = "shared/speed" });
+        await first.StartAsync(Runtime("device-a"), new ProtocolOptions(endpoint, port));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            second.StartAsync(Runtime("device-b"), new ProtocolOptions(endpoint, port)));
+
+        Assert.Contains("already registered", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, manager.MemberCount(endpoint));
+        var config = await CreateClientConfigurationAsync();
+        using var session = await CreateSessionAsync(config, port);
+        Assert.Equal(0, Convert.ToInt32((await session.ReadValueAsync(new NodeId("shared/speed", 2))).Value));
+        await first.StopAsync();
+    }
+
+    [Fact]
+    public async Task Shared_endpoint_subscriptions_keep_device_notifications_isolated()
+    {
+        await using var manager = new OpcUaEndpointHostManager();
+        var port = GetFreePort();
+        var endpoint = $"opc.tcp://127.0.0.1:{port}";
+        var runtimeA = Runtime("device-a");
+        var runtimeB = Runtime("device-b");
+        var first = new OpcUaAdapter(manager);
+        var second = new OpcUaAdapter(manager);
+        await first.StartAsync(runtimeA, new ProtocolOptions(endpoint, port));
+        await second.StartAsync(runtimeB, new ProtocolOptions(endpoint, port));
+        var config = await CreateClientConfigurationAsync();
+        using var session = await CreateSessionAsync(config, port);
+
+        var observed = new ConcurrentDictionary<string, int>(StringComparer.Ordinal);
+        var received = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var subscription = new Subscription(session.DefaultSubscription) { PublishingInterval = 50 };
+        Assert.True(session.AddSubscription(subscription));
+        await subscription.CreateAsync(CancellationToken.None);
+        foreach (var node in new[] { "device-a/speed", "device-b/speed" })
+        {
+            var item = new MonitoredItem(subscription.DefaultItem)
+            {
+                StartNodeId = new NodeId(node, 2),
+                AttributeId = Attributes.Value,
+                QueueSize = 10,
+                DiscardOldest = true
+            };
+            item.Notification += (_, args) =>
+            {
+                if (args.NotificationValue is not MonitoredItemNotification notification) return;
+                var value = Convert.ToInt32(notification.Value.Value);
+                if ((node == "device-a/speed" && value == 101) || (node == "device-b/speed" && value == 202))
+                    observed[node] = value;
+                if (observed.Count == 2) received.TrySetResult();
+            };
+            subscription.AddItem(item);
+        }
+        await subscription.ApplyChangesAsync(CancellationToken.None);
+
+        runtimeA.State.SetInternal(new DataPointId("speed"), 101);
+        runtimeB.State.SetInternal(new DataPointId("speed"), 202);
+        await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(101, observed["device-a/speed"]);
+        Assert.Equal(202, observed["device-b/speed"]);
+        await first.StopAsync();
+        await second.StopAsync();
+    }
+
+    [Fact]
     public async Task Runtime_contract_supports_state_reads_writes_commands_and_events()
     {
         var runtime = new InMemoryDeviceRuntime(new DeviceDefinition(new DeviceId("pump-001"), "pump", new[] { new DataPointDefinition("speed", DataType.Int32, DataPointAccess.ReadWrite, 0) }, new[] { new CommandDefinition("start") }));
@@ -256,9 +374,9 @@ public class ProtocolContractTests
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
-    private static InMemoryDeviceRuntime Runtime(string id) => new(new DeviceDefinition(
+    private static InMemoryDeviceRuntime Runtime(string id, int initial = 0) => new(new DeviceDefinition(
         new DeviceId(id),
         "custom",
-        [new DataPointDefinition("speed", DataType.Int32, DataPointAccess.ReadWrite, 0)],
+        [new DataPointDefinition("speed", DataType.Int32, DataPointAccess.ReadWrite, initial)],
         [new CommandDefinition("start")]));
 }

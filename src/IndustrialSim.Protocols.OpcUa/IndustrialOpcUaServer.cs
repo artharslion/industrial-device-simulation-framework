@@ -158,6 +158,8 @@ internal sealed class IndustrialNodeManager : CustomNodeManager2
             device.AddChild(variable);
             dataPoints.AddReference(ReferenceTypeIds.Organizes, false, variable.NodeId);
             variable.AddReference(ReferenceTypeIds.Organizes, true, dataPoints.NodeId);
+            state.AddReference(ReferenceTypeIds.Organizes, false, variable.NodeId);
+            variable.AddReference(ReferenceTypeIds.Organizes, true, state.NodeId);
         }
 
         foreach (var command in projection.Runtime.Definition.Commands)
