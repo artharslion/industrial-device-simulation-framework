@@ -1,5 +1,6 @@
 using IndustrialSim.Core.Domain;
 using IndustrialSim.Hosting;
+using IndustrialSim.Protocols.OpcUa;
 
 namespace IndustrialSim.Web;
 
@@ -12,10 +13,18 @@ public static class WebHostComposition
         => await CreateAsync(configuredPath, allowDevelopmentFallback, new SimulationHostOptions(), cancellationToken);
 
     public static async Task<SimulationHost> CreateAsync(string? configuredPath, bool allowDevelopmentFallback, SimulationHostOptions options, CancellationToken cancellationToken = default)
+        => await CreateAsync(configuredPath, allowDevelopmentFallback, options, null, cancellationToken);
+
+    public static async Task<SimulationHost> CreateAsync(
+        string? configuredPath,
+        bool allowDevelopmentFallback,
+        SimulationHostOptions options,
+        OpcUaEndpointHostManager? opcUaServers,
+        CancellationToken cancellationToken = default)
     {
-        if (!string.IsNullOrWhiteSpace(configuredPath)) return await SimulationHost.LoadAsync(configuredPath, options, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(configuredPath)) return await SimulationHost.LoadAsync(configuredPath, options, opcUaServers, cancellationToken);
         if (!allowDevelopmentFallback) throw new InvalidOperationException("INDUSTRIALSIM_DEVICE_CONFIG must identify a YAML device configuration outside Development.");
-        return SimulationHost.Create(new DeviceDefinition(
+        var launch = new DeviceLaunchDefinition(new DeviceDefinition(
             new DeviceId("pump-001"),
             "pump",
             new[]
@@ -24,5 +33,6 @@ public static class WebHostComposition
                 new DataPointDefinition("running", DataType.Boolean, DataPointAccess.Read, false),
                 new DataPointDefinition("alarm", DataType.Boolean, DataPointAccess.Read, false)
             }), options);
+        return opcUaServers is null ? SimulationHost.Create(launch) : SimulationHost.Create(launch, opcUaServers);
     }
 }

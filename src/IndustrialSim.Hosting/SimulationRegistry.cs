@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using IndustrialSim.Core.Domain;
+using IndustrialSim.Protocols.OpcUa;
 
 namespace IndustrialSim.Hosting;
 
@@ -62,9 +63,13 @@ public interface ISimulationRegistry
 public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<string, SimulationHandle> _simulations = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<int, string> _reservedPorts = [];
+    private readonly Dictionary<int, PortReservation> _reservedPorts = [];
     private readonly SemaphoreSlim _catalogGate = new(1, 1);
     private bool _disposed;
+
+    public SimulationRegistry() => OpcUaServers = new OpcUaEndpointHostManager();
+
+    public OpcUaEndpointHostManager OpcUaServers { get; }
 
     public event Action<SimulationHandle>? SimulationAdded;
 
@@ -81,20 +86,16 @@ public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
         {
             if (_simulations.ContainsKey(deviceId))
                 throw new SimulationConflictException($"Simulation '{deviceId}' already exists.", "duplicateDeviceId");
-            foreach (var binding in bindings)
-                if (_reservedPorts.TryGetValue(binding.Port, out var owner))
-                    throw new SimulationConflictException(
-                        $"Port {binding.Port} for protocol '{binding.Protocol}' is already reserved by simulation '{owner}'.",
-                        "portConflict");
+            ValidateReservations(bindings, deviceId);
 
-            var host = SimulationHost.Create(definition);
+            var host = SimulationHost.Create(definition, OpcUaServers);
             var handle = new SimulationHandle(host, bindings);
             if (!_simulations.TryAdd(deviceId, handle))
             {
                 await host.DisposeAsync();
                 throw new SimulationConflictException($"Simulation '{deviceId}' already exists.", "duplicateDeviceId");
             }
-            foreach (var binding in bindings) _reservedPorts.Add(binding.Port, deviceId);
+            AddReservations(bindings, deviceId);
             SimulationAdded?.Invoke(handle);
             return handle;
         }
@@ -113,18 +114,17 @@ public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(host);
         var deviceId = host.Runtime.Definition.Id.Value;
         var bindings = NormalizeBindings(portBindings ?? host.PortBindings);
+        host.UseOpcUaServers(OpcUaServers);
         await _catalogGate.WaitAsync(cancellationToken);
         try
         {
             if (_simulations.ContainsKey(deviceId))
                 throw new SimulationConflictException($"Simulation '{deviceId}' already exists.", "duplicateDeviceId");
-            foreach (var binding in bindings)
-                if (_reservedPorts.TryGetValue(binding.Port, out var owner))
-                    throw new SimulationConflictException($"Port {binding.Port} is already reserved by simulation '{owner}'.", "portConflict");
+            ValidateReservations(bindings, deviceId);
             var handle = new SimulationHandle(host, bindings);
             if (!_simulations.TryAdd(deviceId, handle))
                 throw new SimulationConflictException($"Simulation '{deviceId}' already exists.", "duplicateDeviceId");
-            foreach (var binding in bindings) _reservedPorts.Add(binding.Port, deviceId);
+            AddReservations(bindings, deviceId);
             SimulationAdded?.Invoke(handle);
             return handle;
         }
@@ -147,7 +147,7 @@ public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
             throw new ArgumentException("Replacement definition id must match the target device id.", nameof(definition));
 
         var bindings = NormalizeBindings(definition.PortBindings);
-        var candidateHost = SimulationHost.Create(definition);
+        var candidateHost = SimulationHost.Create(definition, OpcUaServers);
         var candidate = new SimulationHandle(candidateHost, bindings);
         var committed = false;
 
@@ -160,13 +160,16 @@ public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
             {
                 if (current.Host.IsRunning)
                     throw new SimulationConflictException($"Simulation '{deviceId}' must be stopped before its definition can be replaced.", "deviceMustBeStopped");
-                foreach (var binding in bindings)
-                    if (_reservedPorts.TryGetValue(binding.Port, out var owner) && !owner.Equals(deviceId, StringComparison.OrdinalIgnoreCase))
-                        throw new SimulationConflictException($"Port {binding.Port} for protocol '{binding.Protocol}' is already reserved by simulation '{owner}'.", "portConflict");
+                ReleaseReservations(current.PortBindings, deviceId);
+                try { ValidateReservations(bindings, deviceId); }
+                catch
+                {
+                    AddReservations(current.PortBindings, deviceId);
+                    throw;
+                }
 
                 _simulations[deviceId] = candidate;
-                foreach (var binding in current.PortBindings) _reservedPorts.Remove(binding.Port);
-                foreach (var binding in bindings) _reservedPorts[binding.Port] = deviceId;
+                AddReservations(bindings, deviceId);
                 try
                 {
                     await commitControlPlane(cancellationToken);
@@ -176,8 +179,8 @@ public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
                 catch
                 {
                     _simulations[deviceId] = current;
-                    foreach (var binding in bindings) _reservedPorts.Remove(binding.Port);
-                    foreach (var binding in current.PortBindings) _reservedPorts[binding.Port] = deviceId;
+                    ReleaseReservations(bindings, deviceId);
+                    AddReservations(current.PortBindings, deviceId);
                     throw;
                 }
 
@@ -221,7 +224,7 @@ public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
                 await handle.Host.StopAsync(cancellationToken);
                 await handle.Host.DisposeAsync();
                 _simulations.TryRemove(deviceId, out _);
-                foreach (var binding in handle.PortBindings) _reservedPorts.Remove(binding.Port);
+                ReleaseReservations(handle.PortBindings, deviceId);
             }
             finally
             {
@@ -260,6 +263,7 @@ public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
         if (_disposed) return;
         foreach (var deviceId in _simulations.Keys.ToArray())
             await RemoveAsync(deviceId, CancellationToken.None);
+        await OpcUaServers.DisposeAsync();
         _disposed = true;
         _catalogGate.Dispose();
     }
@@ -319,5 +323,55 @@ public sealed class SimulationRegistry : ISimulationRegistry, IAsyncDisposable
         var duplicate = normalized.GroupBy(binding => binding.Port).FirstOrDefault(group => group.Count() > 1);
         if (duplicate is not null) throw new SimulationConflictException($"Port {duplicate.Key} is requested more than once.", "portConflict");
         return normalized;
+    }
+
+    private void ValidateReservations(IReadOnlyList<ProtocolPortBinding> bindings, string deviceId)
+    {
+        foreach (var binding in bindings)
+        {
+            if (!_reservedPorts.TryGetValue(binding.Port, out var existing)) continue;
+            var compatibleSharedOpcUa = binding.Protocol.Equals("opcua", StringComparison.OrdinalIgnoreCase)
+                && existing.Protocol.Equals("opcua", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(existing.ListenerKey, ListenerKey(binding, deviceId), StringComparison.Ordinal);
+            if (compatibleSharedOpcUa) continue;
+            throw new SimulationConflictException(
+                $"Port {binding.Port} for protocol '{binding.Protocol}' conflicts with listener '{existing.ListenerKey}' used by simulation '{existing.Members.Order(StringComparer.OrdinalIgnoreCase).First()}'.",
+                "portConflict");
+        }
+    }
+
+    private void AddReservations(IReadOnlyList<ProtocolPortBinding> bindings, string deviceId)
+    {
+        foreach (var binding in bindings)
+        {
+            if (!_reservedPorts.TryGetValue(binding.Port, out var reservation))
+            {
+                reservation = new PortReservation(binding.Protocol.ToLowerInvariant(), ListenerKey(binding, deviceId));
+                _reservedPorts.Add(binding.Port, reservation);
+            }
+            reservation.Members.Add(deviceId);
+        }
+    }
+
+    private void ReleaseReservations(IReadOnlyList<ProtocolPortBinding> bindings, string deviceId)
+    {
+        foreach (var binding in bindings)
+        {
+            if (!_reservedPorts.TryGetValue(binding.Port, out var reservation)) continue;
+            reservation.Members.Remove(deviceId);
+            if (reservation.Members.Count == 0) _reservedPorts.Remove(binding.Port);
+        }
+    }
+
+    private static string ListenerKey(ProtocolPortBinding binding, string deviceId) =>
+        binding.Protocol.Equals("opcua", StringComparison.OrdinalIgnoreCase)
+            ? binding.ListenerKey ?? throw new ArgumentException("OPC UA port binding requires a normalized endpoint listener key.")
+            : $"{binding.Protocol.ToLowerInvariant()}:{deviceId.ToLowerInvariant()}";
+
+    private sealed class PortReservation(string protocol, string listenerKey)
+    {
+        public string Protocol { get; } = protocol;
+        public string ListenerKey { get; } = listenerKey;
+        public HashSet<string> Members { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 }

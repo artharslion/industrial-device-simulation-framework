@@ -68,11 +68,15 @@ public sealed class SimulationHost : IAsyncDisposable
     private TimeSpan _lastBehaviorTime;
     private bool _disposed;
     private IProtocolOperationObserver? _protocolOperationObserver;
+    private OpcUaEndpointHostManager _opcUaServers;
+    private bool _ownsOpcUaServers;
 
-    private SimulationHost(DeviceLaunchDefinition launch)
+    private SimulationHost(DeviceLaunchDefinition launch, OpcUaEndpointHostManager? opcUaServers = null)
     {
         ValidateLaunch(launch);
         _launch = launch;
+        _opcUaServers = opcUaServers ?? new OpcUaEndpointHostManager();
+        _ownsOpcUaServers = opcUaServers is null;
         _options = launch.Options;
         var configuration = launch.Definition;
         var options = launch.Options;
@@ -113,7 +117,7 @@ public sealed class SimulationHost : IAsyncDisposable
 
         if (launch.OpcUa is not null)
         {
-            var opcUa = new OpcUaAdapter();
+            var opcUa = new OpcUaAdapter(_opcUaServers);
             opcUa.Configure(launch.OpcUa.DataPointNodeIds);
             _protocols.Add("opcua", opcUa);
         }
@@ -156,7 +160,14 @@ public sealed class SimulationHost : IAsyncDisposable
 
     public static Task<SimulationHost> LoadAsync(string path, CancellationToken cancellationToken = default) => LoadAsync(path, new SimulationHostOptions(), cancellationToken);
 
-    public static async Task<SimulationHost> LoadAsync(string path, SimulationHostOptions options, CancellationToken cancellationToken = default)
+    public static Task<SimulationHost> LoadAsync(string path, SimulationHostOptions options, CancellationToken cancellationToken = default) =>
+        LoadAsync(path, options, null, cancellationToken);
+
+    public static async Task<SimulationHost> LoadAsync(
+        string path,
+        SimulationHostOptions options,
+        OpcUaEndpointHostManager? opcUaServers,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Configuration path cannot be blank.", nameof(path));
         if (!File.Exists(path)) throw new FileNotFoundException($"Device configuration file '{path}' was not found.", path);
@@ -169,10 +180,13 @@ public sealed class SimulationHost : IAsyncDisposable
             ? new ModbusLaunchDefinition(options.Overrides?.ModbusPort ?? modbusConfiguration.Port, loaded.ModbusMappings)
             : null;
         var webPort = options.Overrides?.WebPort ?? loaded.Configuration.Web?.Port ?? 8080;
-        return Create(new DeviceLaunchDefinition(loaded.Device, options, opcUa, modbus, new DeviceLaunchSource("yaml"), webPort));
+        return new SimulationHost(new DeviceLaunchDefinition(loaded.Device, options, opcUa, modbus, new DeviceLaunchSource("yaml"), webPort), opcUaServers);
     }
 
     public static SimulationHost Create(DeviceLaunchDefinition launch) => new(launch);
+
+    public static SimulationHost Create(DeviceLaunchDefinition launch, OpcUaEndpointHostManager opcUaServers) =>
+        new(launch, opcUaServers ?? throw new ArgumentNullException(nameof(opcUaServers)));
 
     public static SimulationHost Create(DeviceDefinition definition, SimulationHostOptions? options = null) =>
         Create(new DeviceLaunchDefinition(definition, options ?? new SimulationHostOptions()));
@@ -386,7 +400,20 @@ public sealed class SimulationHost : IAsyncDisposable
     {
         if (_disposed) return;
         await StopAsync(CancellationToken.None);
+        if (_ownsOpcUaServers) await _opcUaServers.DisposeAsync();
         _disposed = true;
+    }
+
+    internal void UseOpcUaServers(OpcUaEndpointHostManager opcUaServers)
+    {
+        ArgumentNullException.ThrowIfNull(opcUaServers);
+        if (IsRunning) throw new InvalidOperationException("A running simulation cannot change its OPC UA server manager.");
+        if (_launch.OpcUa is null || ReferenceEquals(_opcUaServers, opcUaServers)) return;
+        var adapter = new OpcUaAdapter(opcUaServers);
+        adapter.Configure(_launch.OpcUa.DataPointNodeIds);
+        _protocols["opcua"] = adapter;
+        _opcUaServers = opcUaServers;
+        _ownsOpcUaServers = false;
     }
 
     private void ScheduleScenarioFault(FaultAction action)

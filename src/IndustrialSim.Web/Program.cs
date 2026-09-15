@@ -24,11 +24,15 @@ if (overrides.LogLevel is { } configuredLogLevel)
     if (!Enum.TryParse<LogLevel>(configuredLogLevel, true, out var logLevel)) throw new ArgumentException($"INDUSTRIALSIM_LOG_LEVEL '{configuredLogLevel}' is invalid.");
     builder.Logging.SetMinimumLevel(logLevel);
 }
-var simulation = await WebHostComposition.CreateAsync(configuredPath, builder.Environment.IsDevelopment(), new SimulationHostOptions(Overrides: overrides));
+var registry = new SimulationRegistry();
+var simulation = await WebHostComposition.CreateAsync(
+    configuredPath,
+    builder.Environment.IsDevelopment(),
+    new SimulationHostOptions(Overrides: overrides),
+    registry.OpcUaServers);
 if (string.IsNullOrWhiteSpace(builder.Configuration["urls"])) builder.WebHost.UseUrls($"http://0.0.0.0:{simulation.WebPort}");
 builder.Services.AddSingleton(simulation);
 builder.Services.AddIndustrialSimTracing(builder.Configuration);
-var registry = new SimulationRegistry();
 await registry.AddAsync(simulation);
 builder.Services.AddIndustrialSimControlPlane(
     registry,

@@ -2,11 +2,47 @@ using IndustrialSim.Core.Domain;
 using IndustrialSim.Faults;
 using IndustrialSim.Hosting;
 using IndustrialSim.Configuration.Models;
+using System.Net;
+using System.Net.Sockets;
 
 namespace IndustrialSim.IntegrationTests;
 
 public sealed class SimulationRegistryTests
 {
+    [Fact]
+    public async Task Compatible_opcua_endpoints_share_one_listener_owner()
+    {
+        await using var registry = new SimulationRegistry();
+        var port = FreePort();
+        var endpoint = $"opc.tcp://127.0.0.1:{port}";
+        await registry.CreateAsync(OpcLaunch("device-a", endpoint));
+        await registry.CreateAsync(OpcLaunch("device-b", endpoint));
+
+        var started = await registry.StartManyAsync(["device-a", "device-b"]);
+
+        Assert.True(started.Succeeded);
+        Assert.Equal(1, registry.OpcUaServers.HostCount);
+        Assert.Equal(2, registry.OpcUaServers.MemberCount(endpoint));
+        await registry.StopAsync("device-a");
+        Assert.Equal(1, registry.OpcUaServers.MemberCount(endpoint));
+        await registry.StopAsync("device-b");
+        Assert.Equal(0, registry.OpcUaServers.HostCount);
+    }
+
+    [Fact]
+    public async Task Registry_rejects_cross_protocol_and_incompatible_opcua_port_conflicts()
+    {
+        await using var registry = new SimulationRegistry();
+        var port = FreePort();
+        await registry.CreateAsync(OpcLaunch("device-a", $"opc.tcp://127.0.0.1:{port}"));
+
+        var incompatible = await Assert.ThrowsAsync<SimulationConflictException>(() =>
+            registry.CreateAsync(OpcLaunch("device-b", $"opc.tcp://localhost:{port}")));
+        Assert.Equal("portConflict", incompatible.ErrorCode);
+        var modbus = await Assert.ThrowsAsync<SimulationConflictException>(() => registry.CreateAsync(Launch("device-c", port)));
+        Assert.Equal("portConflict", modbus.ErrorCode);
+    }
+
     [Fact]
     public async Task Creates_lists_starts_stops_and_removes_devices_in_batches()
     {
@@ -118,6 +154,11 @@ public sealed class SimulationRegistryTests
             new ValidatedModbusMapping("speed", 0, 2, "register", "int32", "readwrite", null, null)
         ]));
 
+    private static DeviceLaunchDefinition OpcLaunch(string id, string endpoint) => new(
+        Definition(id),
+        new SimulationHostOptions(Deterministic: true, Seed: 1),
+        OpcUa: new OpcUaLaunchDefinition(endpoint));
+
     private static DeviceDefinition Definition(string id, bool includeTemperature = false) => new(
         new DeviceId(id),
         "pump",
@@ -137,4 +178,11 @@ public sealed class SimulationRegistryTests
             new DataPointDefinition("running", DataType.Boolean, DataPointAccess.Read, false),
             new DataPointDefinition("alarm", DataType.Boolean, DataPointAccess.Read, false)
         ];
+
+    private static int FreePort()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        return ((IPEndPoint)listener.LocalEndpoint).Port;
+    }
 }

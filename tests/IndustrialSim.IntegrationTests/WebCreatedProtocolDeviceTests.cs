@@ -20,6 +20,37 @@ namespace IndustrialSim.IntegrationTests;
 public sealed class WebCreatedProtocolDeviceTests
 {
     [Fact]
+    public async Task Api_created_opcua_devices_share_one_endpoint_and_stop_independently()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        var port = FreePort();
+        var protocols = new { opcua = new { enabled = true, endpoint = $"opc.tcp://127.0.0.1:{port}" } };
+        Assert.Equal(HttpStatusCode.Created, (await fixture.Client.PostAsJsonAsync("/api/v1/devices", PumpRequest("shared-a", protocols))).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await fixture.Client.PostAsJsonAsync("/api/v1/devices", PumpRequest("shared-b", protocols))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PostAsync("/api/v1/devices/shared-a/start", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PostAsync("/api/v1/devices/shared-b/start", null)).StatusCode);
+
+        using var session = await ConnectOpcAsync(port);
+        var devices = await session.FetchReferencesAsync(new NodeId("industrial-sim/devices", 2), CancellationToken.None);
+        Assert.Contains(devices, reference => reference.BrowseName.Name == "shared-a");
+        Assert.Contains(devices, reference => reference.BrowseName.Name == "shared-b");
+        var speedA = new NodeId("shared-a/speed", 2);
+        var speedB = new NodeId("shared-b/speed", 2);
+        var write = await session.WriteAsync(null, new WriteValueCollection
+        {
+            new() { NodeId = speedA, AttributeId = Attributes.Value, Value = new DataValue(new Variant(111)) }
+        }, CancellationToken.None);
+        Assert.True(StatusCode.IsGood(write.Results[0]));
+        Assert.Equal(0, Convert.ToInt32((await session.ReadValueAsync(speedB)).Value));
+
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PostAsync("/api/v1/devices/shared-a/stop", null)).StatusCode);
+        Assert.Equal(0, Convert.ToInt32((await session.ReadValueAsync(speedB)).Value));
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PostAsync("/api/v1/devices/shared-b/stop", null)).StatusCode);
+        using var available = new TcpListener(IPAddress.Loopback, port);
+        available.Start();
+    }
+
+    [Fact]
     public async Task Api_created_opcua_device_is_browsable_readable_writable_and_callable_by_a_real_client()
     {
         await using var fixture = await Fixture.StartAsync();

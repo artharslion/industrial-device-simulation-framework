@@ -1,5 +1,6 @@
 using IndustrialSim.Configuration.Models;
 using IndustrialSim.Core.Domain;
+using IndustrialSim.Protocols.OpcUa;
 
 namespace IndustrialSim.Hosting;
 
@@ -8,7 +9,7 @@ public sealed class DeviceLaunchException(string message, string errorCode) : Ar
     public string ErrorCode { get; } = errorCode;
 }
 
-public sealed record ProtocolPortBinding(string Protocol, int Port);
+public sealed record ProtocolPortBinding(string Protocol, int Port, string? ListenerKey = null);
 
 public sealed record MappingProfileReference(string Protocol, string Name);
 
@@ -41,9 +42,13 @@ public sealed record DeviceLaunchDefinition(
             var bindings = new List<ProtocolPortBinding>(2);
             if (OpcUa is not null)
             {
-                if (!Uri.TryCreate(OpcUa.Endpoint, UriKind.Absolute, out var endpoint))
-                    throw new DeviceLaunchException($"OPC UA endpoint '{OpcUa.Endpoint}' is invalid.", "invalidOpcUaConfiguration");
-                bindings.Add(new ProtocolPortBinding("opcua", endpoint.Port));
+                OpcUaEndpointDescriptor endpoint;
+                try { endpoint = OpcUaEndpointDescriptor.Parse(OpcUa.Endpoint); }
+                catch (ArgumentException exception)
+                {
+                    throw new DeviceLaunchException(exception.Message, "invalidOpcUaConfiguration");
+                }
+                bindings.Add(new ProtocolPortBinding("opcua", endpoint.Port, endpoint.Endpoint));
             }
             if (Modbus is not null) bindings.Add(new ProtocolPortBinding("modbus", Modbus.Port));
             return bindings;
