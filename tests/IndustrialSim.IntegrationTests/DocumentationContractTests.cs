@@ -213,4 +213,39 @@ public sealed class DocumentationContractTests
         Assert.Contains("Status (2026-09-14):** Completed", plan, StringComparison.Ordinal);
         Assert.Contains("No Wave 3.2 work is included", plan, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Shared_opcua_design_preserves_state_authority_and_device_isolation()
+    {
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var design = File.ReadAllText(Path.Combine(root, "docs", "plans", "2026-09-15-shared-opc-ua-server-design.md"));
+
+        string[] requiredTerms =
+        [
+            "process-level pool keyed by normalized endpoint",
+            "StateStore",
+            "owns live state",
+            "Objects/",
+            "IndustrialSim/",
+            "Devices/",
+            "first successful registration",
+            "final member",
+            "ApplicationUri",
+            "BadNotConnected",
+            "BadTimeout",
+            "same normalized endpoint",
+            "Third-party client",
+            "interoperability is not claimed"
+        ];
+
+        foreach (var term in requiredTerms)
+            Assert.Contains(term, design, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Contains("### A. One fixed global server and endpoint", design, StringComparison.Ordinal);
+        Assert.Contains("### B. A process-level pool keyed by normalized endpoint", design, StringComparison.Ordinal);
+        Assert.Contains("### C. Per-device servers behind a proxy or port forwarder", design, StringComparison.Ordinal);
+        Assert.Contains("does not persist continuous", design, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("live values", design, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("proxy process", design, StringComparison.OrdinalIgnoreCase);
+    }
 }
