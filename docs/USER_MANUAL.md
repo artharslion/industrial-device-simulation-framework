@@ -80,7 +80,11 @@ Prefer templates for team-shared models, repeated tests, or multiple devices of 
 
 ## Step 3: Start the device and understand its state
 
-Open the device details page and use **Start**. Then inspect these tabs in order:
+Open the device details page and use **Start runtime / resume**. Runtime
+lifecycle controls start the host, clock, and configured protocol adapters;
+they do not implicitly execute a logical device command with the same name.
+For a Pump, use the separate **Device commands → start** control to set
+`running=true` and activate its behavior. Then inspect these tabs in order:
 
 1. **overview** — confirms runtime state, clock mode, seed, scenario status, and fault count;
 2. **state** — shows the current value of every datapoint;
@@ -91,11 +95,17 @@ For `pump-001`, observe values such as temperature, pressure, speed, running, an
 
 The Pump profile has a periodic behavior loop. While running, it moves speed toward `ratedSpeed`, derives pressure from speed, increases temperature by `heatingRatePerSecond`, and raises an alarm at `overheatTemperature`. While stopped, it cools by `coolingRatePerSecond`. Motor has a similar speed/current/temperature loop, while Sensor increases its value by `ratePerSecond` while quality is `Good`.
 
-This means a Pump temperature changing after `start` is expected behavior, even if a scenario only mentions `speed`. Inspect **Default behavior** on the device details page to see the effective profile and parameter values.
+This means a Pump temperature changing after its device command `start` is
+expected behavior, even if a scenario only mentions `speed`. Starting only the
+runtime leaves the Pump stopped. Inspect **Default behavior** on the device
+details page to see the effective profile and parameter values.
 
 Only write a datapoint when its access mode permits it. Use **Pause** when you want to inspect a stable runtime, **Resume** to continue, **Stop** to stop it, and **Reset** to return it to its initial runtime state.
 
-If the device is deterministic, use **Tick** to advance simulation time explicitly. This is useful when a test must reach an exact simulation time without waiting for wall-clock time.
+If the device is deterministic, use **Advance 1s** after the device command to
+advance simulation time explicitly. This is useful when a test must reach an
+exact simulation time without waiting for wall-clock time. Real-time devices
+advance through the existing background behavior loop after the command.
 
 ## Step 4: Run the first scenario
 

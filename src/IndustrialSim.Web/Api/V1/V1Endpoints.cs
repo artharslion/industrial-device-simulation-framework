@@ -58,6 +58,7 @@ public static class V1Endpoints
         api.MapPost("/devices", CreateDeviceAsync).RequireAuthorization(IndustrialPolicies.Admin);
         api.MapPut("/devices/{deviceId}", UpdateDeviceAsync).RequireAuthorization(IndustrialPolicies.Admin);
         api.MapDelete("/devices/{deviceId}", RemoveDeviceAsync).RequireAuthorization(IndustrialPolicies.Admin);
+        api.MapPost("/devices/{deviceId}/commands/{command}", InvokeCommandAsync).RequireAuthorization(IndustrialPolicies.Operator);
         api.MapPost("/devices/{deviceId}/{operation}", RunLifecycleAsync).RequireAuthorization(IndustrialPolicies.Operator);
         api.MapPost("/devices/{deviceId}/tick/{seconds:double}", Tick).RequireAuthorization(IndustrialPolicies.Operator);
         api.MapPost("/devices/batch", RunBatchAsync).RequireAuthorization(IndustrialPolicies.Operator);
@@ -318,6 +319,31 @@ public static class V1Endpoints
         }
         trace.SetResult("success");
         return Results.Ok(Runtime(registry.Get(deviceId).Host));
+    }
+
+    private static async Task<IResult> InvokeCommandAsync(
+        string deviceId,
+        string command,
+        ISimulationRegistry registry,
+        SecretRedactor redactor,
+        CancellationToken cancellationToken)
+    {
+        using var trace = IndustrialSimOperation.Start("industrial.command.invoke", redactor, deviceId);
+        var host = registry.Get(deviceId).Host;
+        if (!host.Runtime.Definition.Commands.Any(item => item.Name.Equals(command, StringComparison.OrdinalIgnoreCase)))
+        {
+            trace.SetResult("rejected", "commandNotFound");
+            return IndustrialSimProblemDetails.Result(400, "Command not found", $"Command '{command}' is not defined for device '{deviceId}'.", "commandNotFound");
+        }
+        if (!host.IsRunning)
+        {
+            trace.SetResult("rejected", "deviceNotRunning");
+            return IndustrialSimProblemDetails.Result(409, "Device is not running", $"Device '{deviceId}' must be running before commands can be invoked.", "deviceNotRunning");
+        }
+
+        await host.Runtime.InvokeCommandAsync(command, cancellationToken);
+        trace.SetResult("success");
+        return Results.Ok(Runtime(host));
     }
 
     private static async Task<IResult> RunBatchAsync(

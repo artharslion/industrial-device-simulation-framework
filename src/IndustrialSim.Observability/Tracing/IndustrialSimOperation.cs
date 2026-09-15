@@ -11,6 +11,7 @@ public sealed class IndustrialSimOperation : IDisposable
         "industrial.device.update",
         "industrial.device.remove",
         "industrial.device.lifecycle",
+        "industrial.command.invoke",
         "industrial.state.write",
         "industrial.scenario.start",
         "industrial.scenario.stop",

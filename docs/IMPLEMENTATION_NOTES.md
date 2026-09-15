@@ -99,3 +99,20 @@
   target runtime and its `StateStore`; SQLite still does not persist continuous
   live state. OPC UA disconnect/timeout/latency behavior is device-scoped and
   never stops the shared listener or simulation ticks.
+
+## Device command control verification environment
+
+- Verified on 2026-09-15 after adding an explicit Web/API device-command path
+  distinct from `SimulationHost` lifecycle operations.
+- The full Release solution run passed 228 .NET tests. The Vue suite passed 29
+  tests across 15 files, and the Vue production build completed successfully.
+- A fresh Docker build produced `industrial-sim:device-commands` with image ID
+  `sha256:1aa89ef7f61591067a90f1fd6874bd51dea1b0230593104552acc97c75e51e1f`.
+- A real container run returned 201 for deterministic Pump creation and 200
+  for runtime start, `commands/start`, and a one-second tick. The resulting
+  state was `running=true`, `speed=145`, `temperature=25.5`, and
+  `pressure=0.32`; the retained structured log contained datapoint events for
+  `running`, `speed`, `temperature`, and `pressure`.
+- Runtime start does not implicitly execute a logical device command. The Web
+  console exposes both operations separately, and deterministic devices still
+  require explicit time advancement after a behavior command.

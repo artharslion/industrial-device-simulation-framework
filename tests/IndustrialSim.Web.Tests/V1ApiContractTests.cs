@@ -46,6 +46,55 @@ public sealed class V1ApiContractTests
     }
 
     [Fact]
+    public async Task Pump_commands_drive_behavior_and_publish_datapoint_events()
+    {
+        await using var fixture = await V1Fixture.StartAsync();
+        Assert.Equal(HttpStatusCode.Created, (await fixture.Client.PostAsJsonAsync("/api/v1/devices", PumpRequest("command-pump"))).StatusCode);
+
+        var stoppedCommand = await fixture.Client.PostAsync("/api/v1/devices/command-pump/commands/start", null);
+        Assert.Equal(HttpStatusCode.Conflict, stoppedCommand.StatusCode);
+        using (var problem = JsonDocument.Parse(await stoppedCommand.Content.ReadAsStringAsync()))
+            Assert.Equal("deviceNotRunning", problem.RootElement.GetProperty("errorCode").GetString());
+
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PostAsync("/api/v1/devices/command-pump/start", null)).StatusCode);
+        var unknownCommand = await fixture.Client.PostAsync("/api/v1/devices/command-pump/commands/missing", null);
+        Assert.Equal(HttpStatusCode.BadRequest, unknownCommand.StatusCode);
+        using (var problem = JsonDocument.Parse(await unknownCommand.Content.ReadAsStringAsync()))
+            Assert.Equal("commandNotFound", problem.RootElement.GetProperty("errorCode").GetString());
+
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PostAsync("/api/v1/devices/command-pump/commands/start", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await fixture.Client.PostAsync("/api/v1/devices/command-pump/tick/1", null)).StatusCode);
+
+        JsonElement events = default;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        do
+        {
+            events = await fixture.Client.GetFromJsonAsync<JsonElement>(
+                "/api/v1/devices/command-pump/events?eventType=DataPointChanged&limit=100",
+                timeout.Token);
+            var observed = events.EnumerateArray()
+                .Select(item => item.GetProperty("data").GetProperty("dataPoint").GetString())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (new[] { "running", "speed", "temperature", "pressure" }.All(observed.Contains)) break;
+            await Task.Delay(10, timeout.Token);
+        } while (true);
+
+        var changedPoints = events.EnumerateArray()
+            .Select(item => item.GetProperty("data").GetProperty("dataPoint").GetString())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("running", changedPoints);
+        Assert.Contains("speed", changedPoints);
+        Assert.Contains("temperature", changedPoints);
+        Assert.Contains("pressure", changedPoints);
+
+        var state = await fixture.Client.GetFromJsonAsync<Dictionary<string, JsonElement>>("/api/v1/devices/command-pump/state");
+        Assert.True(state!["running"].GetBoolean());
+        Assert.True(state["speed"].GetInt32() > 0);
+        Assert.True(state["temperature"].GetDouble() > 25d);
+        Assert.True(state["pressure"].GetDouble() > 0d);
+    }
+
+    [Fact]
     public async Task V1_devices_protocols_scenarios_state_and_openapi_are_available()
     {
         await using var fixture = await V1Fixture.StartAsync();
@@ -316,6 +365,24 @@ public sealed class V1ApiContractTests
                 mappings = new[] { new { dataPoint = "speed", kind = "holding", address = 100, dataType = "int32", access = "readwrite" } }
             }
         }
+    };
+
+    private static object PumpRequest(string id) => new
+    {
+        id,
+        type = "pump",
+        deterministic = true,
+        seed = 1,
+        dataPoints = new object[]
+        {
+            new { name = "speed", dataType = "Int32", access = "ReadWrite", initial = (object)0 },
+            new { name = "temperature", dataType = "Double", access = "Read", initial = (object)25d },
+            new { name = "pressure", dataType = "Double", access = "Read", initial = (object)0d },
+            new { name = "running", dataType = "Boolean", access = "Read", initial = (object)false },
+            new { name = "alarm", dataType = "Boolean", access = "Read", initial = (object)false }
+        },
+        commands = new[] { "start", "stop" },
+        behavior = new { profile = "pump", parameters = new { } }
     };
 
     private static int FreePort()

@@ -94,7 +94,7 @@ changing live-state ownership:
 
 This phase includes:
 
-1. Multi-device lifecycle and batch operations.
+1. Multi-device lifecycle, logical device-command, and batch operations.
 2. Persistent device definitions, scenarios, settings, users, and explicit
    versioned runtime snapshots.
 3. A versioned `/api/v1` control API while preserving `/api/*` for one
@@ -109,6 +109,15 @@ SQLite is not a live datapoint store. Running state, clocks, active faults, and
 runtime transitions remain owned by each host's `StateStore` and runtime
 services. Database lock or unavailability may reject control-plane writes but
 must not replace, corrupt, or automatically stop an existing simulation.
+
+Runtime lifecycle and logical device commands are separate control-plane
+operations. Starting a `SimulationHost` starts its clock and configured
+protocol boundaries; it does not implicitly execute a device command named
+`start`. The versioned API exposes logical commands through
+`POST /api/v1/devices/{deviceId}/commands/{command}` and routes them through the
+device runtime so validation, `StateStore` transitions, and runtime event
+publication remain authoritative. Deterministic hosts still require explicit
+time advancement before periodic behavior produces later state changes.
 
 Templates, test-platform features, forwarding, Webhooks, recording/replay,
 additional protocols, and a multi-page console are planned later modules. This

@@ -80,7 +80,10 @@ Custom 会显式创建 `none` 行为 profile，不包含周期性的内置行为
 
 ## 第三步：启动设备并理解实时状态
 
-进入设备详情页，执行 **Start**。然后按照以下顺序检查标签页：
+进入设备详情页，执行 **Start runtime / resume**。Runtime lifecycle 控件只启动
+host、时钟和已配置的协议适配器，不会隐式执行同名的逻辑设备命令。对于 Pump，
+还要执行独立的 **Device commands → start**，将 `running` 设为 `true` 并激活
+内置行为。然后按照以下顺序检查标签页：
 
 1. **overview**：确认运行状态、时钟模式、随机种子、场景状态和故障数量；
 2. **state**：查看每个数据点的当前值；
@@ -91,11 +94,15 @@ Custom 会显式创建 `none` 行为 profile，不包含周期性的内置行为
 
 Pump profile 包含周期性行为循环。运行时，它会让 speed 向 `ratedSpeed` 变化、根据 speed 计算 pressure、按照 `heatingRatePerSecond` 提高 temperature，并在达到 `overheatTemperature` 时触发 alarm；停止时按照 `coolingRatePerSecond` 降温。Motor 包含类似的转速、电流和温度行为，Sensor 则会在 quality 为 `Good` 时按照 `ratePerSecond` 增加 value。
 
-因此，执行 `start` 后 Pump 的 temperature 持续变化是预期行为，即使场景只配置了 `speed`。可以在设备详情页的 **Default behavior** 中查看实际生效的 profile 和参数。
+因此，执行设备命令 `start` 后 Pump 的 temperature 持续变化是预期行为，即使
+场景只配置了 `speed`。仅启动 runtime 时 Pump 仍保持 stopped。可以在设备详情页
+的 **Default behavior** 中查看实际生效的 profile 和参数。
 
 只有访问模式允许时才能写入数据点。需要观察稳定状态时使用 **Pause**，继续运行时使用 **Resume**，结束运行时使用 **Stop**，恢复初始运行状态时使用 **Reset**。
 
-如果设备使用确定性模式，可以通过 **Tick** 显式推进仿真时间。这适合需要在不等待真实时间的情况下，到达精确仿真时刻的测试。
+如果设备使用确定性模式，执行设备命令后还需要通过 **Advance 1s** 显式推进
+仿真时间。这适合需要在不等待真实时间的情况下，到达精确仿真时刻的测试。
+Real-time 设备则会在命令执行后通过现有后台行为循环自动推进。
 
 ## 第四步：运行第一个场景
 

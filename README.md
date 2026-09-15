@@ -49,9 +49,11 @@ YAML `protocols.opcua.endpoint` contract is unchanged. See
 In the console:
 
 1. Open **Devices**, select `pump-001`, and inspect its live state.
-2. Use **Start**, **Pause**, **Stop**, **Reset**, or deterministic **Tick** controls.
-3. Open **Scenarios**, import `examples/scenarios/startup.yaml`, and run it on `pump-001`.
-4. Return to the device details to see state, protocols, faults, and ordered events.
+2. Use **Start runtime / resume** to start the host and its protocol adapters.
+3. Use **Device commands → start** to start Pump behavior; for a deterministic
+   device, use **Advance 1s** to move simulation time.
+4. Open **Scenarios**, import `examples/scenarios/startup.yaml`, and run it on `pump-001`.
+5. Return to the device details to see state, protocols, faults, and ordered events.
 
 Stop the stack with `Ctrl+C`, then:
 

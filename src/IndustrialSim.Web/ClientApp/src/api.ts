@@ -127,6 +127,7 @@ export const platformApi = {
   updateDevice: (id: string, value: DeviceCreateRequest) => request(`/api/v1/devices/${encodeURIComponent(id)}`, json('PUT', value)),
   deleteDevice: (id: string) => request<void>(`/api/v1/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   lifecycle: (id: string, operation: string) => request<RuntimeStatus>(`/api/v1/devices/${encodeURIComponent(id)}/${operation}`, { method: 'POST' }),
+  invokeCommand: (id: string, command: string) => request<RuntimeStatus>(`/api/v1/devices/${encodeURIComponent(id)}/commands/${encodeURIComponent(command)}`, { method: 'POST' }),
   tick: (id: string, seconds: number) => request(`/api/v1/devices/${encodeURIComponent(id)}/tick/${seconds}`, { method: 'POST' }),
   writeState: (id: string, point: string, value: ScalarValue) => request(`/api/v1/devices/${encodeURIComponent(id)}/state/${encodeURIComponent(point)}`, json('PUT', value)),
   activateDeviceFault: (id: string, value: FaultRequest) => request(`/api/v1/devices/${encodeURIComponent(id)}/faults`, json('POST', value)),
