@@ -127,6 +127,22 @@ The example Pump uses:
 | OPC UA | `opc.tcp://localhost:4840` |
 | Modbus TCP | `localhost:5020` |
 
+Logical device commands are separate from runtime lifecycle operations. After
+starting a device runtime, invoke a declared command with:
+
+```text
+POST /api/v1/devices/{deviceId}/commands/{command}
+```
+
+Query the bounded retained event log across devices with:
+
+```text
+GET /api/v1/events?deviceId=pump-001&eventType=DataPointChanged&q=temperature&limit=200
+```
+
+The default retention capacity is 10,000 in-memory envelopes; one query returns
+at most 1,000. These endpoints do not persist live state or events to SQLite.
+
 ## 6. Configuration overrides
 
 Host configuration precedence is command-line option, environment variable, YAML, then built-in default.

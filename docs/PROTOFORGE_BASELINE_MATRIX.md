@@ -37,11 +37,18 @@ Fault behavior. The evidence uses the repository OPC Foundation client in
 protocol and end-to-end tests; no separate third-party GUI/client
 interoperability run is claimed.
 
+Post-gate command and event-search refinements are verified through `95384f8`.
+The current local acceptance run passed 231 Release .NET tests, 30 Vue tests
+across 16 files, and the Vue production build. Operators can invoke logical
+device commands separately from runtime lifecycle, and query the bounded event
+log globally by device, event type, or payload text. This follow-up did not
+publish or revalidate a new Docker release image.
+
 ## Capability groups
 
 | Capability | Owner module | Target wave | Acceptance evidence | Status |
 |---|---|---:|---|---|
-| devices: multi-device lifecycle, launch, restore, and batch operations | Hosting / Application | 1 | `SimulationRegistryTests`, `V1ApiContractTests`, and catalog restore tests | Verified |
+| devices: multi-device lifecycle, logical commands, launch, restore, and batch operations | Hosting / Application | 1 | `SimulationRegistryTests`, `V1ApiContractTests`, `DeviceDetailsView.test.ts`, and catalog restore tests | Verified |
 | protocols: catalog, mappings, supervision, and status | Hosting / Protocols | 1, 4 | API tests plus per-protocol capability manifests and interoperability records | In Progress |
 | templates: versioned definitions and executable mapping profiles | Templates | 2, 4 | `TemplateCatalogTests`, `TemplatePersistenceTests`, `VisualModelingApiTests`, and real-client template-instance access | Verified |
 | scenarios: persisted CRUD and runtime lifecycle | Application / Scenarios | 1, 2 | `ScenarioParserTests`, `VisualModelingApiTests`, and Vue editor tests | Verified |
@@ -136,6 +143,14 @@ vocabularies, tick collection, state/scenario/fault changes, and runtime-log and
 SignalR drops. `TraceCorrelationTests` links the ASP.NET server span, the
 `industrial.state.write` span, and its retained event; `TraceRedactionTests`
 excludes raw credentials from custom tags.
+
+Follow-up commits `6493829` and `95384f8` add the explicit logical-command
+control path, `industrial.command.invoke`, case-insensitive retained-event
+search, the global `/api/v1/events` query, and a 10,000-envelope default
+retention bound. The API result maximum remains 1,000. A current local rerun
+passed 231 Release .NET tests, 30 Vue tests, and the Vue production build. The
+original Wave 3.1 Docker evidence below remains tied to its recorded image; no
+new published or container-tested follow-up image is claimed here.
 
 The full local acceptance run passed 208 .NET tests, 28 Vue tests, and the Vue
 production build. A source-host run and local image `industrial-sim:wave31`

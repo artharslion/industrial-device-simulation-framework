@@ -17,8 +17,8 @@ One logical device is owned by one runtime `StateStore` and can be observed thro
 - Operate devices from a multi-page Web console.
 - Create reusable device templates and persistent scenario definitions.
 - Optionally enable local users with Viewer, Operator, and Admin roles.
-- Inspect bounded structured runtime events, health, Prometheus metrics, and
-  trace-correlated control operations.
+- Search bounded structured runtime events by device, event type, or payload;
+  inspect health, Prometheus metrics, and trace-correlated control operations.
 
 ## Five-minute start with Docker
 
@@ -54,6 +54,11 @@ In the console:
    device, use **Advance 1s** to move simulation time.
 4. Open **Scenarios**, import `examples/scenarios/startup.yaml`, and run it on `pump-001`.
 5. Return to the device details to see state, protocols, faults, and ordered events.
+
+The default Pump heats only to `normalOperatingTemperature` (70°C) during
+normal running and raises its alarm at the separate `overheatTemperature`.
+Open **Events** to search the bounded retained log across devices; the default
+retention is 10,000 events and an API query returns at most 1,000.
 
 Stop the stack with `Ctrl+C`, then:
 

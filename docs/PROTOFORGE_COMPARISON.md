@@ -110,14 +110,19 @@ Fault，提供工业仿真专用的可重复测试与诊断。
 ### 5.3 可观测性边界
 
 Wave 3.1 Observability Gate 已关闭。IndustrialSim 现在提供进程内有界结构化事件
-保留与过滤、非阻塞 subscriber、runtime-log/SignalR drop 计数、独立 liveness 和
-readiness、七个低基数 Prometheus metric family，以及带 secret redaction 的
-OpenTelemetry control-operation correlation。source host 和本地 Docker image 的三个
-观测端点均已实际返回 HTTP 200。
+保留与过滤、按 device/event type/payload 的全局事件搜索、非阻塞 subscriber、
+runtime-log/SignalR drop 计数、独立 liveness 和 readiness、七个低基数 Prometheus
+metric family，以及带 secret redaction 的 OpenTelemetry control-operation
+correlation。逻辑 device command 使用独立 API，并通过
+`industrial.command.invoke` 与 `CommandExecuted`/状态事件关联。source host 和
+Wave 3.1 本地 Docker image 的三个观测端点均已实际返回 HTTP 200。
 
 这不代表持久化日志平台、分布式 collector 可用性保证，或对第三方库内部日志的全面
 重写。OTLP exporter 是可选 batch exporter，collector 不可用不参与 readiness，也
-不得阻塞 simulation tick。SQLite 仍不保存连续 live state 或事件流。
+不得阻塞 simulation tick。事件搜索只覆盖默认 10,000 条的有界内存保留窗口，
+query 最多返回 1,000 条；SQLite 仍不保存连续 live state 或事件流。2026-09-15 的
+命令控件和事件搜索 follow-up 已通过本地自动化验证，但未伪称重新发布了 Wave 3.1
+Docker image。
 
 ### 5.4 外部集成和录制回放
 

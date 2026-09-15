@@ -127,6 +127,22 @@ dotnet run --project src/IndustrialSim.Cli -- scenario run examples/scenarios/st
 | OPC UA | `opc.tcp://localhost:4840` |
 | Modbus TCP | `localhost:5020` |
 
+逻辑设备命令与 runtime lifecycle 操作相互独立。启动设备 runtime 后，通过以下
+端点执行定义中声明的命令：
+
+```text
+POST /api/v1/devices/{deviceId}/commands/{command}
+```
+
+通过以下端点跨设备查询有界的内存事件保留窗口：
+
+```text
+GET /api/v1/events?deviceId=pump-001&eventType=DataPointChanged&q=temperature&limit=200
+```
+
+默认保留 10,000 条内存事件，单次 query 最多返回 1,000 条。这些端点不会把
+live state 或事件流持久化到 SQLite。
+
 ## 6. 配置覆盖规则
 
 主机配置优先级为：命令行选项、环境变量、YAML、内置默认值。

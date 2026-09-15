@@ -8,6 +8,14 @@
 
 **Tech Stack:** .NET 10 minimal APIs, IndustrialSim runtime and observability pipeline, Vue 3, TypeScript, xUnit, Vitest.
 
+**Status (2026-09-15):** Completed in `6493829` after the plan commit
+`b79ed37`. The implementation passed 228 Release .NET tests, 29 Vue tests, the
+Vue production build, and documentation contracts. A fresh local Docker image
+was exercised through Pump creation, runtime start, `commands/start`, one
+deterministic tick, state reads, and retained event reads; `running`, `speed`,
+`temperature`, and `pressure` changes were observed. No Docker Hub publication
+was performed for this follow-up.
+
 ---
 
 ### Task 1: Add a tested device-command API

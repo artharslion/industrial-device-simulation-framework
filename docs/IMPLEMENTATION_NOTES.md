@@ -116,3 +116,22 @@
 - Runtime start does not implicitly execute a logical device command. The Web
   console exposes both operations separately, and deterministic devices still
   require explicit time advancement after a behavior command.
+
+## Pump thermal stability and event-search verification environment
+
+- Reverified on 2026-09-15 at `95384f8` with 231 passing Release .NET tests,
+  30 passing Vue tests across 16 files, and a successful Vue production build.
+- Normal Pump heating now stabilizes at the configurable
+  `normalOperatingTemperature` (70°C by default), which must remain below
+  `overheatTemperature`. Values already above the normal target are not
+  silently reduced, preserving explicit scenario, write, and fault behavior.
+- The canonical runtime event query supports case-insensitive matching across
+  device ID, event type, structured data, and bounded metadata. The Web API
+  exposes global `/api/v1/events` filtering, and the Events page exposes device,
+  type, and payload search without becoming a state owner.
+- Default event retention is 10,000 in-memory envelopes and API queries return
+  at most 1,000. Retention remains bounded and non-durable; SQLite does not
+  store the live event stream.
+- This verification did not build, publish, or manually exercise a new Docker
+  image. Earlier container evidence remains associated with the exact images
+  recorded in the preceding sections.

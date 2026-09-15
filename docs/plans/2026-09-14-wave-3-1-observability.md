@@ -16,6 +16,14 @@ explicit SQLite connection string. `/health/live`, `/health/ready`, and
 `sha256:a6ed5bc949dbb09f9a55cd85e9eab55688f9b7abf412e77c7ec1618b6b0c2e69`.
 No Wave 3.2 work is included.
 
+**Post-gate refinements (2026-09-15):** `6493829` added the correlated
+`industrial.command.invoke` control operation and an explicit logical command
+API. `95384f8` added case-insensitive retained-event search, a global filtered
+`/api/v1/events` surface, and increased the default bounded retention from
+1,000 to 10,000 envelopes. The query result maximum remains 1,000. These
+changes preserve non-blocking ingress and do not make observability a state
+owner or durable event store.
+
 ---
 
 ## 1. Current-code review and Task 3.1 delta
@@ -154,7 +162,7 @@ execute user code on the event pump; it only receives a channel reader.
 Default limits:
 
 - ingress capacity: 2,048 candidates;
-- retention: 1,000 envelopes;
+- retention: 10,000 envelopes;
 - subscriber capacity: 256 envelopes;
 - API query maximum: 1,000 envelopes.
 
@@ -218,6 +226,7 @@ With no endpoint configured, the app performs no external trace export.
 Create custom spans for bounded control operations:
 
 - `industrial.device.create|update|remove|lifecycle`;
+- `industrial.command.invoke`;
 - `industrial.state.write`;
 - `industrial.scenario.start|stop`;
 - `industrial.fault.activate|recover`;

@@ -8,6 +8,13 @@
 
 **Tech Stack:** .NET 10, xUnit, ASP.NET Core minimal APIs, Vue 3, TypeScript, Vitest.
 
+**Status (2026-09-15):** Completed in `95384f8`. A fresh verification at that
+commit passed 231 Release .NET tests, 30 Vue tests across 16 files, and the Vue
+production build. The evidence covers the Pump normal-temperature cap,
+threshold validation, bounded retained-event search, the global event API, and
+the Events page filters. No new container or third-party protocol
+interoperability run is claimed for this follow-up.
+
 ---
 
 ### Task 1: Stabilize the Pump thermal model
