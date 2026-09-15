@@ -13,6 +13,72 @@ namespace IndustrialSim.Protocols.OpcUa.Tests;
 public class ProtocolContractTests
 {
     [Fact]
+    public void Endpoint_descriptor_normalizes_case_and_root_path()
+    {
+        var left = OpcUaEndpointDescriptor.Parse("opc.tcp://LOCALHOST:4840/");
+        var right = OpcUaEndpointDescriptor.Parse("opc.tcp://localhost:4840");
+
+        Assert.Equal(left, right);
+        Assert.Equal("opc.tcp://localhost:4840", left.Endpoint);
+        Assert.NotEqual(left, OpcUaEndpointDescriptor.Parse("opc.tcp://127.0.0.1:4840"));
+    }
+
+    [Theory]
+    [InlineData("http://localhost:4840")]
+    [InlineData("opc.tcp://localhost:4840/path?query=yes")]
+    [InlineData("opc.tcp://localhost:4840/path#fragment")]
+    [InlineData("opc.tcp://user@localhost:4840")]
+    public void Endpoint_descriptor_rejects_unsupported_uris(string endpoint)
+    {
+        Assert.Throws<ArgumentException>(() => OpcUaEndpointDescriptor.Parse(endpoint));
+    }
+
+    [Fact]
+    public async Task Shared_server_lifecycle_reuses_listener_and_releases_it_after_last_member()
+    {
+        await using var manager = new OpcUaEndpointHostManager();
+        var port = GetFreePort();
+        var endpoint = $"opc.tcp://127.0.0.1:{port}";
+        var first = new OpcUaAdapter(manager);
+        var second = new OpcUaAdapter(manager);
+        await first.StartAsync(Runtime("device-a"), new ProtocolOptions(endpoint, port));
+        await second.StartAsync(Runtime("device-b"), new ProtocolOptions(endpoint, port));
+
+        Assert.Equal(1, manager.HostCount);
+        Assert.Equal(2, manager.MemberCount(endpoint));
+        Assert.True(first.IsStandardOpcUaServer);
+        Assert.True(second.IsStandardOpcUaServer);
+
+        await first.StopAsync();
+        Assert.Equal(1, manager.HostCount);
+        Assert.Equal(1, manager.MemberCount(endpoint));
+        using (var unavailable = new TcpListener(IPAddress.Loopback, port))
+            Assert.Throws<SocketException>(() => unavailable.Start());
+
+        await second.StopAsync();
+        Assert.Equal(0, manager.HostCount);
+        using var available = new TcpListener(IPAddress.Loopback, port);
+        available.Start();
+    }
+
+    [Fact]
+    public async Task Shared_server_lifecycle_rejects_a_different_endpoint_on_the_same_port()
+    {
+        await using var manager = new OpcUaEndpointHostManager();
+        var port = GetFreePort();
+        var first = new OpcUaAdapter(manager);
+        var second = new OpcUaAdapter(manager);
+        await first.StartAsync(Runtime("device-a"), new ProtocolOptions($"opc.tcp://127.0.0.1:{port}", port));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            second.StartAsync(Runtime("device-b"), new ProtocolOptions($"opc.tcp://localhost:{port}", port)));
+
+        Assert.Contains("already hosts", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, manager.HostCount);
+        await first.StopAsync();
+    }
+
+    [Fact]
     public async Task Runtime_contract_supports_state_reads_writes_commands_and_events()
     {
         var runtime = new InMemoryDeviceRuntime(new DeviceDefinition(new DeviceId("pump-001"), "pump", new[] { new DataPointDefinition("speed", DataType.Int32, DataPointAccess.ReadWrite, 0) }, new[] { new CommandDefinition("start") }));
@@ -189,4 +255,10 @@ public class ProtocolContractTests
         using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
+
+    private static InMemoryDeviceRuntime Runtime(string id) => new(new DeviceDefinition(
+        new DeviceId(id),
+        "custom",
+        [new DataPointDefinition("speed", DataType.Int32, DataPointAccess.ReadWrite, 0)],
+        [new CommandDefinition("start")]));
 }
