@@ -197,6 +197,76 @@ public class ProtocolContractTests
     }
 
     [Fact]
+    public async Task Shared_network_fault_affects_only_the_target_device_and_recovery_publishes_latest_state()
+    {
+        await using var manager = new OpcUaEndpointHostManager();
+        var port = GetFreePort();
+        var endpoint = $"opc.tcp://127.0.0.1:{port}";
+        var runtimeA = Runtime("device-a", 1);
+        var runtimeB = Runtime("device-b", 2);
+        var first = new OpcUaAdapter(manager);
+        var second = new OpcUaAdapter(manager);
+        await first.StartAsync(runtimeA, new ProtocolOptions(endpoint, port));
+        await second.StartAsync(runtimeB, new ProtocolOptions(endpoint, port));
+        var config = await CreateClientConfigurationAsync();
+        using var session = await CreateSessionAsync(config, port);
+        var speedA = new NodeId("device-a/speed", 2);
+        var speedB = new NodeId("device-b/speed", 2);
+
+        var observedA = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observedB = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var subscription = new Subscription(session.DefaultSubscription) { PublishingInterval = 50 };
+        Assert.True(session.AddSubscription(subscription));
+        await subscription.CreateAsync(CancellationToken.None);
+        foreach (var (node, expected, target) in new[]
+        {
+            (speedA, 9, observedA),
+            (speedB, 8, observedB)
+        })
+        {
+            var item = new MonitoredItem(subscription.DefaultItem)
+            {
+                StartNodeId = node,
+                AttributeId = Attributes.Value,
+                QueueSize = 10,
+                DiscardOldest = true
+            };
+            item.Notification += (_, args) =>
+            {
+                if (args.NotificationValue is MonitoredItemNotification notification && Convert.ToInt32(notification.Value.Value) == expected)
+                    target.TrySetResult(expected);
+            };
+            subscription.AddItem(item);
+        }
+        await subscription.ApplyChangesAsync(CancellationToken.None);
+
+        first.ApplyTransportFault("disconnect", TimeSpan.Zero);
+        var disconnected = await Assert.ThrowsAsync<ServiceResultException>(() => session.ReadValueAsync(speedA));
+        Assert.Equal(StatusCodes.BadNotConnected, disconnected.StatusCode);
+        Assert.Equal(2, Convert.ToInt32((await session.ReadValueAsync(speedB)).Value));
+        Assert.True(runtimeA.Write("speed", 9).Succeeded);
+        Assert.True(runtimeB.Write("speed", 8).Succeeded);
+        Assert.Equal(8, await observedB.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.False(observedA.Task.IsCompleted);
+
+        first.RecoverTransportFault();
+        Assert.Equal(9, await observedA.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(9, Convert.ToInt32((await session.ReadValueAsync(speedA)).Value));
+
+        first.ApplyTransportFault("timeout", TimeSpan.FromMilliseconds(150));
+        var stopwatch = Stopwatch.StartNew();
+        Assert.Equal(8, Convert.ToInt32((await session.ReadValueAsync(speedB)).Value));
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromMilliseconds(100));
+        var timeout = await Assert.ThrowsAsync<ServiceResultException>(() => session.ReadValueAsync(speedA));
+        Assert.Equal(StatusCodes.BadTimeout, timeout.StatusCode);
+        first.RecoverTransportFault();
+
+        await first.StopAsync();
+        Assert.Equal(8, Convert.ToInt32((await session.ReadValueAsync(speedB)).Value));
+        await second.StopAsync();
+    }
+
+    [Fact]
     public async Task Runtime_contract_supports_state_reads_writes_commands_and_events()
     {
         var runtime = new InMemoryDeviceRuntime(new DeviceDefinition(new DeviceId("pump-001"), "pump", new[] { new DataPointDefinition("speed", DataType.Int32, DataPointAccess.ReadWrite, 0) }, new[] { new CommandDefinition("start") }));

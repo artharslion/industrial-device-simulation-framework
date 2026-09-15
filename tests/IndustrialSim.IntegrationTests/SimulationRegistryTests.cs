@@ -44,6 +44,26 @@ public sealed class SimulationRegistryTests
     }
 
     [Fact]
+    public async Task Shared_opcua_network_fault_does_not_stop_either_simulation_tick()
+    {
+        await using var registry = new SimulationRegistry();
+        var port = FreePort();
+        var endpoint = $"opc.tcp://127.0.0.1:{port}";
+        var first = await registry.CreateAsync(OpcLaunch("device-a", endpoint));
+        var second = await registry.CreateAsync(OpcLaunch("device-b", endpoint));
+        await registry.StartManyAsync(["device-a", "device-b"]);
+
+        first.Host.ApplyNetworkFault("opcua", "disconnect", TimeSpan.Zero);
+        first.Host.Tick(TimeSpan.FromSeconds(1));
+        second.Host.Tick(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(1, first.Host.TotalTicks);
+        Assert.Equal(1, second.Host.TotalTicks);
+        Assert.Throws<IOException>(() => ((IndustrialSim.Protocols.OpcUa.OpcUaAdapter)first.Host.Protocols["opcua"]).Read("speed"));
+        Assert.Equal(0, ((IndustrialSim.Protocols.OpcUa.OpcUaAdapter)second.Host.Protocols["opcua"]).Read("speed"));
+    }
+
+    [Fact]
     public async Task Creates_lists_starts_stops_and_removes_devices_in_batches()
     {
         await using var registry = new SimulationRegistry();

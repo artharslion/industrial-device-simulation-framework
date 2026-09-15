@@ -39,9 +39,11 @@ public sealed class OpcUaAdapter : IProtocolAdapter
 
     public void ApplyTransportFault(string fault, TimeSpan duration)
     {
+        var notificationsWereSuppressed = _transportFault.SuppressNotifications;
         _transportFault.Apply(fault, duration);
         IsDisconnected = _transportFault.Mode is OpcUaTransportFaultMode.Disconnect or OpcUaTransportFaultMode.Timeout;
         Latency = _transportFault.Mode == OpcUaTransportFaultMode.Latency ? duration : TimeSpan.Zero;
+        if (notificationsWereSuppressed && !_transportFault.SuppressNotifications) _registration?.Refresh();
     }
 
     public void RecoverTransportFault()
