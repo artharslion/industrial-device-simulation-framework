@@ -40,7 +40,7 @@ builder.Services.AddIndustrialSimControlPlane(
     builder.Configuration["Auth:Mode"] ?? "Disabled",
     new RuntimeEventLogOptions(
         builder.Configuration.GetValue("IndustrialSim:Observability:IngressCapacity", 2048),
-        builder.Configuration.GetValue("IndustrialSim:Observability:RetentionCapacity", 1000),
+        builder.Configuration.GetValue("IndustrialSim:Observability:RetentionCapacity", 10000),
         builder.Configuration.GetValue("IndustrialSim:Observability:SubscriberCapacity", 256)));
 
 var app = builder.Build();

@@ -7,6 +7,15 @@ namespace IndustrialSim.Runtime.Tests;
 public class PumpTests
 {
     [Fact]
+    public void Existing_positional_overheat_parameter_keeps_its_meaning()
+    {
+        var parameters = new PumpParameters(1450, TimeSpan.FromSeconds(10), 3.2, 0.5, 0.2, 80);
+
+        Assert.Equal(80, parameters.OverheatTemperature);
+        Assert.Equal(70, parameters.NormalOperatingTemperature);
+    }
+
+    [Fact]
     public void Start_and_update_produce_predictable_state()
     {
         var definition = new Pump(new StateStore(new DeviceDefinition(new DeviceId("pump-001"), "pump"))).Definition;
@@ -51,5 +60,20 @@ public class PumpTests
 
         Assert.Equal(25.5d, state.Get(new DataPointId("temperature"))!.Value);
         Assert.Equal(145, state.Get(new DataPointId("speed"))!.Value);
+    }
+
+    [Fact]
+    public void Normal_running_temperature_stabilizes_below_the_alarm_threshold()
+    {
+        var definition = new Pump(new StateStore(new DeviceDefinition(new DeviceId("pump-001"), "pump"))).Definition;
+        var state = new StateStore(definition);
+        var pump = new Pump(state);
+
+        pump.Start();
+        pump.Update(TimeSpan.FromMinutes(10));
+        pump.Update(TimeSpan.FromMinutes(10));
+
+        Assert.Equal(70d, state.Get(new DataPointId("temperature"))!.Value);
+        Assert.Equal(false, state.Get(new DataPointId("alarm"))!.Value);
     }
 }

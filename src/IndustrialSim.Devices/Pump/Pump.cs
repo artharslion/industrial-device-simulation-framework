@@ -10,9 +10,10 @@ public sealed record PumpParameters
     public double MaxPressure { get; init; } = 3.2;
     public double HeatingRatePerSecond { get; init; } = 0.5;
     public double CoolingRatePerSecond { get; init; } = 0.2;
+    public double NormalOperatingTemperature { get; init; } = 70;
     public double OverheatTemperature { get; init; } = 90;
     public PumpParameters() { }
-    public PumpParameters(int ratedSpeed = 1450, TimeSpan acceleration = default, double maxPressure = 3.2, double heatingRatePerSecond = 0.5, double coolingRatePerSecond = 0.2, double overheatTemperature = 90)
+    public PumpParameters(int ratedSpeed = 1450, TimeSpan acceleration = default, double maxPressure = 3.2, double heatingRatePerSecond = 0.5, double coolingRatePerSecond = 0.2, double overheatTemperature = 90, double normalOperatingTemperature = 70)
     {
         RatedSpeed = ratedSpeed;
         Acceleration = acceleration == default ? TimeSpan.FromSeconds(10) : acceleration;
@@ -20,6 +21,7 @@ public sealed record PumpParameters
         HeatingRatePerSecond = heatingRatePerSecond;
         CoolingRatePerSecond = coolingRatePerSecond;
         OverheatTemperature = overheatTemperature;
+        NormalOperatingTemperature = normalOperatingTemperature;
     }
 }
 
@@ -58,7 +60,10 @@ public sealed class Pump
             _runningFor += elapsed;
             var fraction = _parameters.Acceleration == TimeSpan.Zero ? 1d : Math.Min(1d, _runningFor.TotalSeconds / _parameters.Acceleration.TotalSeconds);
             speed = (int)Math.Round(_parameters.RatedSpeed * fraction);
-            temperature += _parameters.HeatingRatePerSecond * elapsed.TotalSeconds;
+            if (temperature < _parameters.NormalOperatingTemperature)
+                temperature = Math.Min(
+                    _parameters.NormalOperatingTemperature,
+                    temperature + _parameters.HeatingRatePerSecond * elapsed.TotalSeconds);
         }
         else
         {

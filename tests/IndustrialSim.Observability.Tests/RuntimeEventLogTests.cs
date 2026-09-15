@@ -75,6 +75,29 @@ public sealed class RuntimeEventLogTests
         Assert.Single(log.Query(new RuntimeEventQuery(DeviceId: "added")));
     }
 
+    [Fact]
+    public async Task Retained_events_can_be_searched_before_the_result_limit_is_applied()
+    {
+        await using var registry = new SimulationRegistry();
+        await using var log = CreateLog(new RuntimeEventLogOptions(32, 16, 8));
+        log.Attach(registry);
+        await log.StartAsync();
+        var handle = await registry.CreateAsync(Launch("pump-search"));
+
+        handle.Host.State.SetInternal(new DataPointId("speed"), 1);
+        handle.Host.State.SetInternal(new DataPointId("speed"), 2);
+        handle.Host.State.SetInternal(new DataPointId("speed"), 3);
+
+        await WaitUntilAsync(() => log.Query().Count == 3);
+
+        var matches = log.Query(new RuntimeEventQuery(Search: "SPEED", Limit: 1));
+
+        var match = Assert.Single(matches);
+        Assert.Equal(3, match.Data.GetProperty("newValue").GetInt32());
+        Assert.Equal(3, log.Query(new RuntimeEventQuery(Search: "pump-search")).Count);
+        Assert.Empty(log.Query(new RuntimeEventQuery(Search: "alarm")));
+    }
+
     private static RuntimeEventLog CreateLog(RuntimeEventLogOptions options) =>
         new(options, new RuntimeEventEnvelopeFactory(new SecretRedactor()), TimeProvider.System);
 

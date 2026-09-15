@@ -174,6 +174,12 @@ label { display: block; margin: 0 0 7px; color: var(--text-secondary); font-size
 .event-type { overflow: hidden; color: var(--accent-text); text-overflow: ellipsis; white-space: nowrap; }
 .event-data { overflow-wrap: anywhere; color: var(--text-secondary); }
 .event-empty { padding: 42px 16px; color: var(--text-tertiary); font-size: 12px; text-align: center; }
+.event-result-count { color: var(--text-tertiary); font: 12px "Cascadia Mono", monospace; white-space: nowrap; }
+.event-filter-bar { display: grid; grid-template-columns: minmax(150px, 0.7fr) minmax(180px, 0.8fr) minmax(240px, 1.5fr) auto; gap: 10px; align-items: end; margin-bottom: 14px; padding: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.event-filter-bar label { margin-bottom: 5px; font-size: 11px; }
+.event-filter-actions { display: flex; gap: 8px; }
+.events-page .event-row { grid-template-columns: 70px minmax(100px, 0.45fr) minmax(140px, 0.55fr) minmax(0, 1.5fr); }
+.event-device { overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
 .fault-list { display: grid; gap: 7px; margin-top: 13px; }
 .fault-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 9px; border: 1px solid rgba(237, 106, 120, 0.18); border-radius: 6px; background: var(--red-soft); }
 .fault-row span { overflow: hidden; color: #e9a1a9; font: 10px "Cascadia Mono", monospace; text-overflow: ellipsis; white-space: nowrap; }
@@ -362,6 +368,9 @@ label { display: block; margin: 0 0 7px; color: var(--text-secondary); font-size
   .fault-panel { grid-column: auto / span 12; }
   .event-row { grid-template-columns: 62px minmax(0, 1fr); }
   .event-data { grid-column: 1 / -1; }
+  .event-filter-bar { grid-template-columns: 1fr 1fr; }
+  .event-search-field, .event-filter-actions { grid-column: 1 / -1; }
+  .events-page .event-row { grid-template-columns: 62px minmax(0, 1fr); }
   .form-grid.three { grid-template-columns: 1fr 1fr; }
   .editor-head, .editor-footer { align-items: stretch; flex-direction: column; }
   .run-target { grid-template-columns: 1fr; margin-left: 0; }

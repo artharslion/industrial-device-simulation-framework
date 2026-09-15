@@ -50,6 +50,7 @@ public sealed class BuiltInDeviceTests
 
         Assert.Equal(["start", "stop"], pump.Commands.Select(command => command.Name));
         Assert.Equal("pump", pump.Behavior!.Profile);
+        Assert.Contains(BuiltInDeviceProfiles.Get("pump").Parameters, parameter => parameter.Name == "normalOperatingTemperature" && parameter.DefaultValue == 70);
         BuiltInDeviceProfiles.Validate(pump, pump.Behavior);
 
         var incompatible = new DeviceDefinition(
@@ -61,6 +62,16 @@ public sealed class BuiltInDeviceTests
 
         var error = Assert.Throws<ArgumentException>(() => BuiltInDeviceProfiles.Validate(incompatible, incompatible.Behavior!));
         Assert.Contains("temperature", error.Message, StringComparison.OrdinalIgnoreCase);
+
+        var unsafeThresholds = BuiltInDeviceProfiles.Get("pump").CreateDefinition(
+            new DeviceId("unsafe-pump"),
+            new Dictionary<string, double>
+            {
+                ["normalOperatingTemperature"] = 90,
+                ["overheatTemperature"] = 90
+            });
+        var thresholdError = Assert.Throws<ArgumentException>(() => BuiltInDeviceProfiles.Validate(unsafeThresholds, unsafeThresholds.Behavior!));
+        Assert.Contains("must be lower", thresholdError.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

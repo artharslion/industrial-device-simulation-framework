@@ -2,7 +2,7 @@ namespace IndustrialSim.Observability.Events;
 
 public sealed record RuntimeEventLogOptions(
     int IngressCapacity = 2048,
-    int RetentionCapacity = 1000,
+    int RetentionCapacity = 10000,
     int SubscriberCapacity = 256)
 {
     public RuntimeEventLogOptions Validate()

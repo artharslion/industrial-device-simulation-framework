@@ -1809,6 +1809,8 @@ device:
       ratedSpeed: 1450
       accelerationSeconds: 10
       heatingRatePerSecond: 0.5
+      normalOperatingTemperature: 70
+      overheatTemperature: 90
 ```
 
 Supported v0.1 profiles are `pump`, `motor`, `sensor`, and `none`. An explicit
@@ -1821,6 +1823,12 @@ For backward compatibility, definitions that omit `device.behavior` may still
 use legacy type-and-schema inference. Authoring tools SHOULD emit explicit
 behavior metadata and MUST show the behavior summary and parameter defaults
 before creating the device.
+
+The Pump profile increases temperature by `heatingRatePerSecond` only until
+`normalOperatingTemperature` is reached during normal running. That stable
+temperature MUST be lower than `overheatTemperature`. A temperature already
+above the normal operating value is not silently clamped down, so external
+writes, scenarios, and faults can still represent an observable overheat.
 
 ---
 
@@ -1836,6 +1844,8 @@ running = true
 speed ramps
     ↓
 temperature increases
+    ↓
+temperature stabilizes at normalOperatingTemperature
     ↓
 pressure follows speed
 ```

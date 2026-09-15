@@ -88,15 +88,15 @@ host、时钟和已配置的协议适配器，不会隐式执行同名的逻辑�
 1. **overview**：确认运行状态、时钟模式、随机种子、场景状态和故障数量；
 2. **state**：查看每个数据点的当前值；
 3. **protocols**：确认需要的协议适配器正在运行；
-4. **events**：查看 Start 操作产生的生命周期事件。
+4. **events**：查看 Start 操作产生的生命周期事件。可以按设备、事件类型和事件内容搜索，跨设备查找 `alarm` 等变化。
 
 对于 `pump-001`，重点观察 temperature、pressure、speed、running 和 alarm。
 
-Pump profile 包含周期性行为循环。运行时，它会让 speed 向 `ratedSpeed` 变化、根据 speed 计算 pressure、按照 `heatingRatePerSecond` 提高 temperature，并在达到 `overheatTemperature` 时触发 alarm；停止时按照 `coolingRatePerSecond` 降温。Motor 包含类似的转速、电流和温度行为，Sensor 则会在 quality 为 `Good` 时按照 `ratePerSecond` 增加 value。
+Pump profile 包含周期性行为循环。运行时，它会让 speed 向 `ratedSpeed` 变化、根据 speed 计算 pressure，并按照 `heatingRatePerSecond` 提高 temperature，直到在 `normalOperatingTemperature`（默认 70°C）稳定；达到 `overheatTemperature` 时触发 alarm；停止时按照 `coolingRatePerSecond` 降温。Motor 包含类似的转速、电流和温度行为，Sensor 则会在 quality 为 `Good` 时按照 `ratePerSecond` 增加 value。
 
 因此，执行设备命令 `start` 后 Pump 的 temperature 持续变化是预期行为，即使
 场景只配置了 `speed`。仅启动 runtime 时 Pump 仍保持 stopped。可以在设备详情页
-的 **Default behavior** 中查看实际生效的 profile 和参数。
+的 **Default behavior** 中查看实际生效的 profile 和参数。Event 搜索覆盖有界的内存保留窗口；Web host 默认保留最近 10,000 条结构化运行时事件。
 
 只有访问模式允许时才能写入数据点。需要观察稳定状态时使用 **Pause**，继续运行时使用 **Resume**，结束运行时使用 **Stop**，恢复初始运行状态时使用 **Reset**。
 

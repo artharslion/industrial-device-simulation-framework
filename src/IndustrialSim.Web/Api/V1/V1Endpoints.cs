@@ -66,6 +66,7 @@ public static class V1Endpoints
             Results.Ok(registry.Get(deviceId).Host.State.Snapshot().ToDictionary(item => item.Key, item => item.Value?.Value)));
         api.MapPut("/devices/{deviceId}/state/{dataPoint}", WriteState).RequireAuthorization(IndustrialPolicies.Operator);
         api.MapGet("/devices/{deviceId}/runtime", (string deviceId, ISimulationRegistry registry) => Results.Ok(Runtime(registry.Get(deviceId).Host)));
+        api.MapGet("/events", RuntimeEvents);
         api.MapGet("/devices/{deviceId}/events", RuntimeEvents);
         api.MapGet("/devices/{deviceId}/faults", (string deviceId, ISimulationRegistry registry) => Results.Ok(registry.Get(deviceId).Host.FaultManager.ActiveFaults));
         api.MapPost("/devices/{deviceId}/faults", ActivateFault).RequireAuthorization(IndustrialPolicies.Operator);
@@ -208,22 +209,24 @@ public static class V1Endpoints
     }
 
     private static IResult RuntimeEvents(
-        string deviceId,
+        string? deviceId,
         string? eventType,
+        string? q,
         long? afterSequence,
         int? limit,
         ISimulationRegistry registry,
         RuntimeEventLog eventLog)
     {
-        registry.Get(deviceId);
+        if (!string.IsNullOrWhiteSpace(deviceId)) registry.Get(deviceId);
         IReadOnlyList<string>? eventTypes = string.IsNullOrWhiteSpace(eventType)
             ? null
             : eventType.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return Results.Ok(eventLog.Query(new RuntimeEventQuery(
-            deviceId,
-            eventTypes,
-            afterSequence,
-            limit ?? 100)));
+            DeviceId: deviceId,
+            EventTypes: eventTypes,
+            AfterSequence: afterSequence,
+            Limit: limit ?? 100,
+            Search: q)));
     }
 
     private static async Task<IResult> UpdateDeviceAsync(

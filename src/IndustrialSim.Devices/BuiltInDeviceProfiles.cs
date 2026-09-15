@@ -29,7 +29,7 @@ public static class BuiltInDeviceProfiles
         new(
             "pump",
             "Pump",
-            "Accelerates to a rated speed, heats while running, cools while stopped, derives pressure from speed, and raises an overheat alarm.",
+            "Accelerates to a rated speed, heats to a stable normal operating temperature, cools while stopped, derives pressure from speed, and raises an overheat alarm.",
             [
                 new DataPointDefinition("speed", DataType.Int32, DataPointAccess.ReadWrite, 0, "rpm"),
                 new DataPointDefinition("temperature", DataType.Double, DataPointAccess.Read, 25d, "°C"),
@@ -45,6 +45,7 @@ public static class BuiltInDeviceProfiles
                 new("maxPressure", 3.2, 0, "bar", "Pressure produced at rated speed."),
                 new("heatingRatePerSecond", 0.5, 0, "°C/s", "Temperature increase while running."),
                 new("coolingRatePerSecond", 0.2, 0, "°C/s", "Temperature decrease while stopped."),
+                new("normalOperatingTemperature", 70, 25, "°C", "Stable temperature during normal operation."),
                 new("overheatTemperature", 90, 0, "°C", "Alarm threshold.")
             ]),
         new(
@@ -124,6 +125,14 @@ public static class BuiltInDeviceProfiles
                 throw new ArgumentException($"Behavior profile '{profile.Name}' does not define parameter '{pair.Key}'.");
             if (!double.IsFinite(pair.Value) || pair.Value < parameter.Minimum)
                 throw new ArgumentException($"Behavior parameter '{pair.Key}' must be at least {parameter.Minimum}.");
+        }
+
+        if (profile.Name.Equals("pump", StringComparison.OrdinalIgnoreCase))
+        {
+            var normalOperatingTemperature = Parameter(behavior, "normalOperatingTemperature");
+            var overheatTemperature = Parameter(behavior, "overheatTemperature");
+            if (normalOperatingTemperature >= overheatTemperature)
+                throw new ArgumentException("Behavior parameter 'normalOperatingTemperature' must be lower than 'overheatTemperature'.");
         }
     }
 

@@ -20,10 +20,14 @@ export interface ProtocolStatus {
 }
 
 export interface RuntimeEvent {
+  sequence?: number
+  deviceId?: string
   timestamp?: string | { elapsed?: string }
   time?: string
   eventType?: string
   type?: string
+  data?: unknown
+  metadata?: Record<string, string>
   dataPointId?: unknown
   commandName?: unknown
   eventMetadata?: unknown

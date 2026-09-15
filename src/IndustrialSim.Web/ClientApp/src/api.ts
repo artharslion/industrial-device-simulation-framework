@@ -1,6 +1,6 @@
 import type { InjectionKey } from 'vue'
 import type {
-  BuiltInDeviceProfile, DeviceCreateRequest, DeviceDetails, DeviceSummary, DeviceTemplateDocument, EffectiveSetting, FaultRequest, ProtocolStatus, ProtocolSummary,
+  BuiltInDeviceProfile, DeviceCreateRequest, DeviceDetails, DeviceSummary, DeviceTemplateDocument, EffectiveSetting, FaultRequest, ProtocolStatus, ProtocolSummary, RuntimeEvent,
   ScenarioCatalogItem, SessionSummary, SettingSummary, TemplatePackage, UserSummary, RuntimeSnapshot, RuntimeStatus, ScalarValue,
 } from './types'
 
@@ -121,6 +121,14 @@ const json = (method: string, body?: unknown): RequestInit => ({
 export const platformApi = {
   session: () => request<SessionSummary>('/api/v1/auth/session'),
   devices: () => request<DeviceSummary[]>('/api/v1/devices'),
+  runtimeEvents: (filters: { deviceId?: string; eventType?: string; search?: string; limit?: number } = {}) => {
+    const query = new URLSearchParams()
+    if (filters.deviceId) query.set('deviceId', filters.deviceId)
+    if (filters.eventType) query.set('eventType', filters.eventType)
+    if (filters.search) query.set('q', filters.search)
+    query.set('limit', String(filters.limit ?? 200))
+    return request<RuntimeEvent[]>(`/api/v1/events?${query.toString()}`)
+  },
   deviceProfiles: () => request<BuiltInDeviceProfile[]>('/api/v1/device-profiles'),
   createDevice: (value: DeviceCreateRequest) => request<DeviceSummary>('/api/v1/devices', json('POST', value)),
   device: (id: string) => request<DeviceDetails>(`/api/v1/devices/${encodeURIComponent(id)}`),

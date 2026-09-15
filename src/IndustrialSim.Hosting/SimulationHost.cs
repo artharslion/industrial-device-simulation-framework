@@ -639,7 +639,8 @@ public sealed class SimulationHost : IAsyncDisposable
         BuiltInDeviceProfiles.Parameter(behavior, "maxPressure"),
         BuiltInDeviceProfiles.Parameter(behavior, "heatingRatePerSecond"),
         BuiltInDeviceProfiles.Parameter(behavior, "coolingRatePerSecond"),
-        BuiltInDeviceProfiles.Parameter(behavior, "overheatTemperature")));
+        BuiltInDeviceProfiles.Parameter(behavior, "overheatTemperature"),
+        BuiltInDeviceProfiles.Parameter(behavior, "normalOperatingTemperature")));
 
     private static Motor CreateMotor(StateStore state, DeviceBehaviorDefinition behavior) => new(state, new MotorParameters(
         (int)Math.Round(BuiltInDeviceProfiles.Parameter(behavior, "ratedSpeed")),

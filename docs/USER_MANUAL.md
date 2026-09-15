@@ -89,16 +89,16 @@ For a Pump, use the separate **Device commands → start** control to set
 1. **overview** — confirms runtime state, clock mode, seed, scenario status, and fault count;
 2. **state** — shows the current value of every datapoint;
 3. **protocols** — confirms that the expected adapters are running;
-4. **events** — shows the lifecycle events produced by the start operation.
+4. **events** — shows the lifecycle events produced by the start operation. Use the device, event-type, and payload search filters to find changes such as `alarm` across devices.
 
 For `pump-001`, observe values such as temperature, pressure, speed, running, and alarm.
 
-The Pump profile has a periodic behavior loop. While running, it moves speed toward `ratedSpeed`, derives pressure from speed, increases temperature by `heatingRatePerSecond`, and raises an alarm at `overheatTemperature`. While stopped, it cools by `coolingRatePerSecond`. Motor has a similar speed/current/temperature loop, while Sensor increases its value by `ratePerSecond` while quality is `Good`.
+The Pump profile has a periodic behavior loop. While running, it moves speed toward `ratedSpeed`, derives pressure from speed, and increases temperature by `heatingRatePerSecond` until it stabilizes at `normalOperatingTemperature` (70°C by default). It raises an alarm at `overheatTemperature` and cools by `coolingRatePerSecond` while stopped. Motor has a similar speed/current/temperature loop, while Sensor increases its value by `ratePerSecond` while quality is `Good`.
 
 This means a Pump temperature changing after its device command `start` is
 expected behavior, even if a scenario only mentions `speed`. Starting only the
 runtime leaves the Pump stopped. Inspect **Default behavior** on the device
-details page to see the effective profile and parameter values.
+details page to see the effective profile and parameter values. Event search covers the bounded in-memory retention window; the default Web host keeps the latest 10,000 structured runtime events.
 
 Only write a datapoint when its access mode permits it. Use **Pause** when you want to inspect a stable runtime, **Resume** to continue, **Stop** to stop it, and **Reset** to return it to its initial runtime state.
 

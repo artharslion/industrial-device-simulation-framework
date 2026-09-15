@@ -39,6 +39,10 @@ public sealed class V1ApiContractTests
         var latest = events[0];
         Assert.Equal("DataPointChanged", latest.GetProperty("eventType").GetString());
         Assert.Equal(2, latest.GetProperty("data").GetProperty("newValue").GetInt32());
+        var searched = await fixture.Client.GetFromJsonAsync<JsonElement>(
+            "/api/v1/events?deviceId=event-device&eventType=DataPointChanged&q=SPEED&limit=1");
+        Assert.Equal(1, searched.GetArrayLength());
+        Assert.Equal("event-device", searched[0].GetProperty("deviceId").GetString());
         var sequence = latest.GetProperty("sequence").GetInt64();
         var after = await fixture.Client.GetFromJsonAsync<JsonElement>(
             $"/api/v1/devices/event-device/events?afterSequence={sequence}&limit=10");
