@@ -248,4 +248,39 @@ public sealed class DocumentationContractTests
         Assert.Contains("live values", design, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("proxy process", design, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void Shared_opcua_plan_is_test_first_and_has_independent_commit_boundaries()
+    {
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        var plan = File.ReadAllText(Path.Combine(root, "docs", "plans", "2026-09-15-shared-opc-ua-server-implementation-plan.md"));
+
+        string[] tasks =
+        [
+            "Task 1: Add normalized endpoint identity and shared server lifecycle",
+            "Task 2: Add dynamic multi-device address space and runtime routing",
+            "Task 3: Integrate SimulationHost and SimulationRegistry endpoint ownership",
+            "Task 4: Isolate OPC UA Network Faults on shared endpoints",
+            "Task 5: Update public contracts, examples, and acceptance evidence"
+        ];
+        string[] commits =
+        [
+            "feat: add shared opc ua server lifecycle",
+            "feat: expose multiple devices through shared opc ua address space",
+            "refactor: integrate simulation hosts with shared opc ua server",
+            "fix: isolate opc ua faults on shared endpoints",
+            "docs: document shared opc ua endpoint hosting"
+        ];
+
+        foreach (var task in tasks)
+            Assert.Contains(task, plan, StringComparison.Ordinal);
+        foreach (var commit in commits)
+            Assert.Contains(commit, plan, StringComparison.Ordinal);
+
+        Assert.Contains("Write failing", plan, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("dotnet test IndustrialSim.sln", plan, StringComparison.Ordinal);
+        Assert.Contains("docker build", plan, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Rollback", plan, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("third-party OPC UA interoperability", plan, StringComparison.OrdinalIgnoreCase);
+    }
 }
