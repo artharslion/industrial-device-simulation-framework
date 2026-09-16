@@ -105,8 +105,9 @@ public sealed class IndustrialSimMetricsTests
         await log.StartAsync();
         await RuntimeEventLogTests.WaitUntilAsync(() => log.Query().Count > 0);
         await using var subscription = log.Subscribe(capacity: 1);
-        for (var value = 21; value <= 100; value++)
-            handle.Host.State.SetInternal(new DataPointId("value"), value);
+        handle.Host.State.SetInternal(new DataPointId("value"), 21);
+        await RuntimeEventLogTests.WaitUntilAsync(() => subscription.Reader.TryPeek(out _));
+        handle.Host.State.SetInternal(new DataPointId("value"), 22);
         await RuntimeEventLogTests.WaitUntilAsync(() => log.SubscriberDropped > 0);
 
         var scrape = await ScrapeAsync(collectorRegistry);
